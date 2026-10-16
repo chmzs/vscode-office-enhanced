@@ -132,7 +132,40 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             handler.emit("open", buildOpenPayload())
         }).on("command", (command) => {
             vscode.commands.executeCommand(command)
-        }).on("openLink", (uri: string) => {
+        }).on("openLink", async (uri: string) => {
+            // 处理 Obsidian wikilink
+            if (uri.startsWith('wiki:')) {
+                const wikiTarget = uri.slice(5);
+                const [page, anchor] = wikiTarget.split('#');
+                if (page) {
+                    const pattern = `**/${page}.md`;
+                    const files = await vscode.workspace.findFiles(pattern, '**/node_modules/**', 1);
+                    if (files.length > 0) {
+                        const doc = await vscode.workspace.openTextDocument(files[0]);
+                        const editor = await vscode.window.showTextDocument(doc, { preview: false });
+                        // 如果有锚点，跳转到对应标题
+                        if (anchor) {
+                            const anchorSlug = anchor.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+                            for (let i = 0; i < doc.lineCount; i++) {
+                                const line = doc.lineAt(i);
+                                const headingMatch = line.text.match(/^#{1,6}\s+(.+)$/);
+                                if (headingMatch) {
+                                    const headingSlug = headingMatch[1].toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+                                    if (headingSlug === anchorSlug) {
+                                        const range = new vscode.Range(i, 0, i, 0);
+                                        editor.revealRange(range, vscode.TextEditorRevealType.AtTop);
+                                        editor.selection = new vscode.Selection(range.start, range.start);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        vscode.window.showWarningMessage(`Wikilink target not found: ${page}`);
+                    }
+                }
+                return;
+            }
             const resReg = /https:\/\/file.*\.net/i;
             if (uri.match(resReg)) {
                 const localPath = uri.replace(resReg, '')

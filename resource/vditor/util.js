@@ -156,6 +156,15 @@ export const openLink = () => {
         if (!isCompose(e) && !isSpecial) {
             return;
         }
+        // 处理 Obsidian wikilink
+        const wikilink = ele.closest?.('[data-type="wikilink"], [data-type="wikilink-embed"]');
+        if (wikilink) {
+            const href = wikilink.dataset?.href;
+            if (href) {
+                handler.emit("openLink", `wiki:${href}`)
+            }
+            return;
+        }
         if (ele.tagName == 'A') {
             handler.emit("openLink", ele.href)
         } else if (ele.tagName == 'IMG') {

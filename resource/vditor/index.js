@@ -95,6 +95,10 @@ handler.on("open", async (md) => {
       },
       extend: hotKeys
     }, after() {
+      // 启用 Obsidian 双链语法支持
+      if (editor.vditor && editor.vditor.lute) {
+        editor.vditor.lute.SetObsidian(true);
+      }
       handler.on("update", content => {
         editor.setValue(content);
       })

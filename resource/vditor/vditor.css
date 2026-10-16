@@ -24,6 +24,7 @@
   --ir-link-color: #008000;
   --ir-bracket-color: #0000ff;
   --ir-paren-color: #008000;
+  --wikilink-color: #7c3aed;
 }
 .vditor--dark {
   --border-color: #141414;
@@ -48,6 +49,7 @@
   --ir-link-color: #ffc66d;
   --ir-bracket-color: #287bde;
   --ir-paren-color: #6a8759;
+  --wikilink-color: #a78bfa;
 }
 /**
  * tool tip.
@@ -1773,5 +1775,33 @@
 }
 .vditor-sv__marker--strong {
   font-weight: bold;
+}
+
+/* Obsidian Wikilink Styles */
+.vditor-wysiwyg .vditor-ir__node[data-type="wikilink"],
+.vditor-ir .vditor-ir__node[data-type="wikilink"] {
+  color: var(--wikilink-color);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.vditor-wysiwyg .vditor-ir__node[data-type="wikilink"] .vditor-ir__marker,
+.vditor-ir .vditor-ir__node[data-type="wikilink"] .vditor-ir__marker {
+  display: none;
+}
+
+.vditor-wysiwyg .vditor-ir__node[data-type="wikilink"] .vditor-wikilink__source,
+.vditor-ir .vditor-ir__node[data-type="wikilink"] .vditor-wikilink__source {
+  display: none;
+}
+
+.vditor-wysiwyg .vditor-ir__node[data-type="wikilink"] .vditor-wikilink__display,
+.vditor-ir .vditor-ir__node[data-type="wikilink"] .vditor-wikilink__display {
+  display: inline;
+}
+
+.vditor-wysiwyg .vditor-ir__node[data-type="wikilink"]:hover,
+.vditor-ir .vditor-ir__node[data-type="wikilink"]:hover {
+  background-color: rgba(124, 58, 237, 0.1);
 }
 
