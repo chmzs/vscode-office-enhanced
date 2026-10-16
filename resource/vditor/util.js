@@ -151,17 +151,19 @@ export async function getToolbar(resPath) {
 export const openLink = () => {
     const clickCallback = e => {
         let ele = e.target;
-        e.stopPropagation()
-        const isSpecial = ['dblclick', 'auxclick'].includes(e.type)
+        const isSpecial = ['dblclick', 'auxclick'].includes(e.type);
+        // 只有按住 Ctrl/Cmd 单击，或者双击/中键时，才触发链接跳转
         if (!isCompose(e) && !isSpecial) {
             return;
         }
+
         // 处理 Obsidian wikilink (预览模式下的 a 标签)
         if (ele.classList.contains('obsidian-wikilink') || ele.dataset?.href) {
             const href = ele.dataset?.href;
             if (href) {
                 e.preventDefault();
-                handler.emit("openLink", `wiki:${href}`)
+                e.stopPropagation();
+                handler.emit("openLink", `wiki:${href}`);
                 return;
             }
         }
@@ -170,24 +172,33 @@ export const openLink = () => {
         if (wikilink) {
             const href = wikilink.dataset?.href;
             if (href) {
-                handler.emit("openLink", `wiki:${href}`)
+                e.preventDefault();
+                e.stopPropagation();
+                handler.emit("openLink", `wiki:${href}`);
+                return;
             }
-            return;
         }
         if (ele.tagName == 'A') {
-            handler.emit("openLink", ele.href)
+            e.preventDefault();
+            e.stopPropagation();
+            handler.emit("openLink", ele.href);
         } else if (ele.tagName == 'IMG') {
             const parent = ele.parentElement;
             if (parent?.tagName == 'A' && parent.href) {
-                handler.emit("openLink", parent.href)
+                e.preventDefault();
+                e.stopPropagation();
+                handler.emit("openLink", parent.href);
                 return;
             }
             const src = ele.src;
             if (src?.match(/http/)) {
-                handler.emit("openLink", src)
+                e.preventDefault();
+                e.stopPropagation();
+                handler.emit("openLink", src);
             }
         }
     }
+
     const wysiwyg = document.querySelector(".vditor-wysiwyg");
     if (wysiwyg) {
         wysiwyg.addEventListener('dblclick', clickCallback);
@@ -222,6 +233,36 @@ export const openLink = () => {
         preview.addEventListener('click', clickCallback);
         preview.addEventListener('auxclick', clickCallback);
     }
+
+    // 监听光标选区与点击：进入双链时展开原始 [[xxx|display]] 源码供直接编辑；离开时自动收起为别名
+    const syncWikilinkExpand = () => {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) return;
+        const range = selection.getRangeAt(0);
+        const container = range.startContainer;
+        const currentWikilink = container.nodeType === 1 
+            ? container.closest?.('[data-type="wikilink"]') 
+            : container.parentElement?.closest?.('[data-type="wikilink"]');
+
+        document.querySelectorAll('.vditor-ir__node--expand[data-type="wikilink"]').forEach(node => {
+            if (node !== currentWikilink) {
+                node.classList.remove('vditor-ir__node--expand');
+            }
+        });
+
+        if (currentWikilink) {
+            currentWikilink.classList.add('vditor-ir__node--expand');
+        }
+    };
+
+    document.addEventListener('selectionchange', syncWikilinkExpand);
+    document.addEventListener('click', (e) => {
+        const target = e.target;
+        const wikilink = target.closest?.('[data-type="wikilink"]');
+        if (wikilink && !isCompose(e)) {
+            wikilink.classList.add('vditor-ir__node--expand');
+        }
+    });
 }
 
 export function scrollEditor(top) {

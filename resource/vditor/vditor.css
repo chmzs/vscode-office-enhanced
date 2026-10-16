@@ -24,7 +24,7 @@
   --ir-link-color: #008000;
   --ir-bracket-color: #0000ff;
   --ir-paren-color: #008000;
-  --wikilink-color: #7c3aed;
+  --wikilink-color: #0969da;
 }
 .vditor--dark {
   --border-color: #141414;
@@ -49,7 +49,7 @@
   --ir-link-color: #ffc66d;
   --ir-bracket-color: #287bde;
   --ir-paren-color: #6a8759;
-  --wikilink-color: #a78bfa;
+  --wikilink-color: #58a6ff;
 }
 /**
  * tool tip.
@@ -1777,14 +1777,27 @@
   font-weight: bold;
 }
 
+/* 修复新版 Lute 引擎在 WYSIWYG / IR 模式下行内公式未加 display:none 导致公式源码与 KaTeX 并排重叠的问题 */
+.vditor-wysiwyg span.vditor-wysiwyg__block[data-type="math-inline"] > code[data-type="math-inline"],
+.vditor-wysiwyg .vditor-math-inline > code,
+.vditor-ir [data-type="math-inline"] > code:not(.vditor-ir__marker) {
+  display: none;
+}
+.vditor-math-inline__cm-host {
+  display: none !important;
+}
+
 /* Obsidian Wikilink Styles */
 .vditor-wysiwyg .vditor-ir__node[data-type="wikilink"],
 .vditor-ir .vditor-ir__node[data-type="wikilink"] {
   color: var(--wikilink-color);
   text-decoration: underline;
   cursor: pointer;
+  border-radius: 2px;
+  padding: 0 1px;
 }
 
+/* 默认收起/阅读状态：隐藏 markers 和 source，仅显示 display 别名 */
 .vditor-wysiwyg .vditor-ir__node[data-type="wikilink"] .vditor-ir__marker,
 .vditor-ir .vditor-ir__node[data-type="wikilink"] .vditor-ir__marker {
   display: none;
@@ -1800,19 +1813,39 @@
   display: inline;
 }
 
+/* 激活展开/编辑状态 (获得光标或点击进入)：隐藏 display，展开 [[ + source + ]] 供原生打字编辑 */
+.vditor-wysiwyg .vditor-ir__node[data-type="wikilink"].vditor-ir__node--expand .vditor-ir__marker,
+.vditor-ir .vditor-ir__node[data-type="wikilink"].vditor-ir__node--expand .vditor-ir__marker {
+  display: inline;
+  color: var(--second-color);
+  width: auto;
+  height: auto;
+}
+
+.vditor-wysiwyg .vditor-ir__node[data-type="wikilink"].vditor-ir__node--expand .vditor-wikilink__display,
+.vditor-ir .vditor-ir__node[data-type="wikilink"].vditor-ir__node--expand .vditor-wikilink__display {
+  display: none;
+}
+
+.vditor-wysiwyg .vditor-ir__node[data-type="wikilink"].vditor-ir__node--expand .vditor-wikilink__source,
+.vditor-ir .vditor-ir__node[data-type="wikilink"].vditor-ir__node--expand .vditor-wikilink__source {
+  display: inline;
+  color: var(--wikilink-color);
+}
+
 .vditor-wysiwyg .vditor-ir__node[data-type="wikilink"]:hover,
 .vditor-ir .vditor-ir__node[data-type="wikilink"]:hover {
-  background-color: rgba(124, 58, 237, 0.1);
+  background-color: rgba(9, 105, 218, 0.08);
 }
 
 .obsidian-wikilink {
-  color: var(--wikilink-color, #7c3aed);
+  color: var(--wikilink-color, #0969da);
   text-decoration: underline;
   cursor: pointer;
 }
 
 .obsidian-wikilink:hover {
-  background-color: rgba(124, 58, 237, 0.1);
+  background-color: rgba(9, 105, 218, 0.08);
 }
 
 .obsidian-wikilink-embed {
@@ -1820,8 +1853,9 @@
   padding: 2px 8px;
   border: 1px dashed var(--border-color, #d0d7de);
   border-radius: 4px;
-  color: var(--wikilink-color, #7c3aed);
+  color: var(--wikilink-color, #0969da);
   cursor: pointer;
 }
+
 
 
