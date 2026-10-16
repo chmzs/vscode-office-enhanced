@@ -156,7 +156,16 @@ export const openLink = () => {
         if (!isCompose(e) && !isSpecial) {
             return;
         }
-        // 处理 Obsidian wikilink
+        // 处理 Obsidian wikilink (预览模式下的 a 标签)
+        if (ele.classList.contains('obsidian-wikilink') || ele.dataset?.href) {
+            const href = ele.dataset?.href;
+            if (href) {
+                e.preventDefault();
+                handler.emit("openLink", `wiki:${href}`)
+                return;
+            }
+        }
+        // 处理 Obsidian wikilink (WYSIWYG/IR 模式下的 span 节点)
         const wikilink = ele.closest?.('[data-type="wikilink"], [data-type="wikilink-embed"]');
         if (wikilink) {
             const href = wikilink.dataset?.href;
@@ -179,23 +188,40 @@ export const openLink = () => {
             }
         }
     }
-    const content = document.querySelector(".vditor-wysiwyg");
-    content.addEventListener('dblclick', clickCallback);
-    content.addEventListener('click', clickCallback);
-    content.addEventListener('auxclick', clickCallback);
-    document.querySelector(".vditor-reset").addEventListener("scroll", e => {
-        // 滚动有偏差
-        handler.emit("scroll", { scrollTop: e.target.scrollTop - 70 })
-    });
-    document.querySelector(".vditor-ir").addEventListener('click', e => {
-        let ele = e.target;
-        if (ele.classList.contains('vditor-ir__link')) {
-            ele = e.target.nextElementSibling?.nextElementSibling?.nextElementSibling
-        }
-        if (ele.classList.contains('vditor-ir__marker--link')) {
-            handler.emit("openLink", ele.textContent)
-        }
-    });
+    const wysiwyg = document.querySelector(".vditor-wysiwyg");
+    if (wysiwyg) {
+        wysiwyg.addEventListener('dblclick', clickCallback);
+        wysiwyg.addEventListener('click', clickCallback);
+        wysiwyg.addEventListener('auxclick', clickCallback);
+    }
+    const reset = document.querySelector(".vditor-reset");
+    if (reset) {
+        reset.addEventListener("scroll", e => {
+            // 滚动有偏差
+            handler.emit("scroll", { scrollTop: e.target.scrollTop - 70 })
+        });
+    }
+    const ir = document.querySelector(".vditor-ir");
+    if (ir) {
+        ir.addEventListener('dblclick', clickCallback);
+        ir.addEventListener('click', clickCallback);
+        ir.addEventListener('auxclick', clickCallback);
+        ir.addEventListener('click', e => {
+            let ele = e.target;
+            if (ele.classList.contains('vditor-ir__link')) {
+                ele = e.target.nextElementSibling?.nextElementSibling?.nextElementSibling
+            }
+            if (ele.classList.contains('vditor-ir__marker--link')) {
+                handler.emit("openLink", ele.textContent)
+            }
+        });
+    }
+    const preview = document.querySelector(".vditor-preview");
+    if (preview) {
+        preview.addEventListener('dblclick', clickCallback);
+        preview.addEventListener('click', clickCallback);
+        preview.addEventListener('auxclick', clickCallback);
+    }
 }
 
 export function scrollEditor(top) {

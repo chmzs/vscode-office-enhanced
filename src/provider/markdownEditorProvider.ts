@@ -138,10 +138,26 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                 const wikiTarget = uri.slice(5);
                 const [page, anchor] = wikiTarget.split('#');
                 if (page) {
-                    const pattern = `**/${page}.md`;
-                    const files = await vscode.workspace.findFiles(pattern, '**/node_modules/**', 1);
-                    if (files.length > 0) {
-                        const doc = await vscode.workspace.openTextDocument(files[0]);
+                    let targetUri: vscode.Uri | undefined;
+                    // 1. 优先尝试相对于当前文档目录查找
+                    const relName = page.endsWith('.md') ? page : `${page}.md`;
+                    const candidatePath = resolve(folderPath.fsPath, relName);
+                    try {
+                        const candUri = vscode.Uri.file(candidatePath);
+                        await vscode.workspace.fs.stat(candUri);
+                        targetUri = candUri;
+                    } catch {
+                        // 2. 工作区全文按文件名查找 (支持嵌套路径匹配)
+                        const cleanPage = page.endsWith('.md') ? page.slice(0, -3) : page;
+                        const baseName = basename(cleanPage);
+                        const files = await vscode.workspace.findFiles(`**/${baseName}.md`, '**/node_modules/**', 10);
+                        if (files.length > 0) {
+                            targetUri = files.find(f => f.fsPath.replace(/\\/g, '/').endsWith(`${cleanPage}.md`)) || files[0];
+                        }
+                    }
+
+                    if (targetUri) {
+                        const doc = await vscode.workspace.openTextDocument(targetUri);
                         const editor = await vscode.window.showTextDocument(doc, { preview: false });
                         // 如果有锚点，跳转到对应标题
                         if (anchor) {
