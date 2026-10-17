@@ -47,6 +47,12 @@ export function normalizeWikilinkSoup(md) {
     return String(md == null ? '' : md).replace(WIKI_SOUP_RE, '[[]]');
 }
 
+/** 表格内 \| 转义双链：Lute 会把反斜杠留在 data-href 上，判链/跳转前需还原 */
+export function cleanWikilinkHref(href) {
+    const bs = String.fromCharCode(92);
+    return String(href == null ? '' : href).split(bs).join('');
+}
+
 let cachedWikilinks = [];
 let validTargetSet = new Set();
 let syncTimer = null;
@@ -103,7 +109,7 @@ export function syncWikilinksStatus() {
     const links = document.querySelectorAll('[data-type="wikilink"], .obsidian-wikilink');
     if (!links || links.length === 0) return;
     links.forEach(link => {
-        const rawHref = link.dataset?.href || '';
+        const rawHref = cleanWikilinkHref(link.dataset?.href);
         const page = rawHref.split('#')[0].trim().toLowerCase();
         if (!page) {
             // 页内纯锚点链接，不判定为断链
@@ -398,7 +404,7 @@ export const openLink = (editor) => {
 
         // 处理 Obsidian wikilink (预览模式下的 a 标签)
         if (ele.classList.contains('obsidian-wikilink') || ele.dataset?.href) {
-            const href = ele.dataset?.href;
+            const href = cleanWikilinkHref(ele.dataset?.href);
             if (href) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -409,7 +415,7 @@ export const openLink = (editor) => {
         // 处理 Obsidian wikilink (WYSIWYG/IR 模式下的 span 节点)
         const wikilink = ele.closest?.('[data-type="wikilink"], [data-type="wikilink-embed"]');
         if (wikilink) {
-            const href = wikilink.dataset?.href;
+            const href = cleanWikilinkHref(wikilink.dataset?.href);
             if (href) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -611,6 +617,51 @@ export const openLink = (editor) => {
     ['.vditor-wysiwyg', '.vditor-ir'].forEach(hostSel => {
         const host = document.querySelector(hostSel);
         if (host) host.addEventListener('keydown', wlBackspace, true);
+    });
+
+    // —— 复制序列化：选区含双链节点时，剪贴板文本按 [[页面|别名]] 源码形态输出。
+    // 否则浏览器取 DOM 纯文本 = 显示名+隐藏源码 的粘连团（用户实测粘贴损坏）。
+    const onWlCopy = (e) => {
+        if (!e.clipboardData) return;
+        const selNow = window.getSelection();
+        if (!selNow || selNow.rangeCount === 0 || selNow.isCollapsed) return;
+        const frag = selNow.getRangeAt(0).cloneContents();
+        const nodes = frag.querySelectorAll ? frag.querySelectorAll('[data-type="wikilink"], [data-type="wikilink-embed"]') : [];
+        if (!nodes.length) return;
+        nodes.forEach(n => {
+            const spans = [...n.children].filter(x => x.className.indexOf('marker') < 0);
+            const src = spans[spans.length - 1];
+            const href = cleanWikilinkHref(n.getAttribute('data-href'));
+            let text = src ? (src.textContent || '').split('​').join('') : href;
+            if (!text) text = href;
+            n.textContent = (n.getAttribute('data-type') === 'wikilink-embed' ? '!' : '') + '[[' + text + ']]';
+        });
+        const box = document.createElement('div');
+        box.appendChild(frag);
+        e.clipboardData.setData('text/plain', box.textContent || '');
+        e.preventDefault();
+    };
+    // —— 粘贴防护：表格单元格里粘贴含别名的双链，自动转义为 \|，防止竖线截断表格 ——
+    const onWlPaste = (e) => {
+        if (!e.clipboardData) return;
+        const text = e.clipboardData.getData('text/plain') || '';
+        if (text.indexOf('[[') < 0 || text.indexOf('|') < 0) return;
+        const selNow = window.getSelection();
+        const f = selNow && selNow.anchorNode;
+        const el = f && (f.nodeType === 1 ? f : f.parentElement);
+        if (!el || !el.closest || !el.closest('table')) return;
+        const bs = String.fromCharCode(92);
+        const esc = text.split('|]]').join(bs + '|]]');
+        if (esc === text) return;
+        e.preventDefault();
+        document.execCommand('insertText', false, esc);
+    };
+    ['.vditor-wysiwyg', '.vditor-ir'].forEach(hostSel => {
+        const host = document.querySelector(hostSel);
+        if (host) {
+            host.addEventListener('copy', onWlCopy, true);
+            host.addEventListener('paste', onWlPaste, true);
+        }
     });
 
     const wlUnwrapEmpty = () => {

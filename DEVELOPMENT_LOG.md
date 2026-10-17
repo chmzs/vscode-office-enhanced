@@ -377,6 +377,19 @@ E2E：P6 字面文本存在 ✓；P8 连续 Backspace 光标零逃逸、闭合�
 
 ---
 
+### 24. 别名双链复制损坏 + 表格转义误判断链修复（v3.7.4-18）
+
+**用户报告**：①复制 `[[KEY|Shakun, 2012, Nat]]` 粘贴得到"显示名+隐藏源码"粘连团；②表格内按规范写 `\|` 转义的双链被标成橙色断链。
+**取证**：lute.min.js 直测：`[[A\|B]]`（表内/表外同构）→ `data-href="A\"`（**尾反斜杠残留**，判链必失配→断链）；display=B、source=`A\|B`、往返无损。复制损坏=浏览器对 contenteditable 选区取 textContent，把 display 与 hidden source 两段文本拼成非法串。
+**修复（util.js）**：
+1. `cleanWikilinkHref()`：判链与 openLink 跳转前剥反斜杠（表格转义链不再误判、跳转解析正确目标）；
+2. `copy` capture 拦截：选区含双链节点时剪贴板按 `[[源码]]` 形态序列化（源码 span 优先，保留 `\|`，表内粘贴不坏）；
+3. `paste` capture 拦截：表格单元内粘贴含 `|` 双链自动转义 `|]]`→`\|]]` 再插入。
+**E2E**：P12 clipboard=`[[花粉数据集\|PollenDB]]` ✓；P13 转义链 not-broken ✓；P9 修正探针键数(6)后 no-jump/no-soup/final='' 全绿；P11 表格 tr 稳定+单元格清空 ✓；P8 saved 零括号汤且表格行保持 ✓。
+**Obsidian 跨机原理澄清**：`vscode.env.openExternal` 恒在**本机 OS** 执行（remote-SSH 下也代理回本地客户端），"Open in Obsidian"天然打开本机 Obsidian，无需开关；两台机器路径一致+库同步时 vault+file 与 path 寻址都命中本机副本。
+
+---
+
 ## 发布流程
 
 ```bash

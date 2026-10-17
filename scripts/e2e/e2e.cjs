@@ -16,6 +16,7 @@ tags: [花粉]
 | 方法 | 数据集 | 精度 |
 | --- | --- | --- |
 | 温度序列 | [[全新世温度]] | 0.3℃ |
+| 引用 | [[花粉数据集\\|PollenDB]] | 2.1℃ |
 
 普通段落末尾`;
 
@@ -263,6 +264,32 @@ tags: [花粉]
   })()`);
   console.log('P11 table:', JSON.stringify(p11r), ' tr-stable:', p11r.tr === tr0, ' cell-cleared:', !!(p11r.cellText && p11r.cellText.indexOf('全新世温度') < 0), ' raw:', JSON.stringify(p11r.cellText));
 
+  // ===== P12/P13: 复制序列化 + 表格内转义双链不误判断链 =====
+  await page.evaluate(c => window.__openDoc(c), DOC);
+  await page.evaluate(() => window.__waitEditor());
+  await page.waitForTimeout(900);
+  console.log('P12 atoms:', await page.evaluate(`(() => {
+    const ns = [...document.querySelectorAll('.vditor-wysiwyg [data-type="wikilink"]')];
+    return JSON.stringify(ns.map(x => ({ href: x.getAttribute('data-href'), kids: [...x.children].map(k => k.className.split('__')[1] || k.className) })));
+  })()`));
+  const clip = await page.evaluate(() => {
+    const n = [...document.querySelectorAll('.vditor-wysiwyg [data-type="wikilink"]')].find(x => (x.getAttribute('data-href') || '').indexOf('花粉数据集') === 0);
+    if (!n) return 'NO-ALIAS-ATOM';
+    const r = document.createRange(); r.selectNode(n);
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    const dt = new DataTransfer();
+    const ev = new ClipboardEvent('copy', { clipboardData: dt, bubbles: true, cancelable: true });
+    n.dispatchEvent(ev);
+    return dt.getData('text/plain');
+  });
+  console.log('P12 clipboard:', JSON.stringify(clip));
+  const p13 = await page.evaluate(() => {
+    const n = [...document.querySelectorAll('.vditor-wysiwyg [data-type="wikilink"]')].find(x => (x.getAttribute('data-href') || '').indexOf('花粉数据集') === 0);
+    if (!n) return null;
+    return { unresolved: n.classList.contains('vditor-wikilink--unresolved'), href: n.getAttribute('data-href') };
+  });
+  console.log('P13 escaped-link:', JSON.stringify(p13), ' not-broken:', !!(p13 && !p13.unresolved));
+
   // ===== P9: 节点尾部逐字退格 —— 不跳段、不产生残缺双链 =====
   await clickPEnd();
   await page.keyboard.press('Enter');
@@ -273,7 +300,7 @@ tags: [花粉]
   await page.waitForTimeout(500);
   console.log('P9-ATOM:', await page.evaluate(`(() => { const n=[...document.querySelectorAll('.vditor-wysiwyg [data-type=\"wikilink\"]')].pop(); if(!n) return 'NO-ATOM'; const kids=[...n.children].map(x=>x.className+'::'+JSON.stringify(x.textContent)); return JSON.stringify({outer:n.outerHTML.slice(0,200), kids}); })()`));
   let jump9 = false, soup9 = false;
-  for (let i = 0; i < 14; i++) {
+  for (let i = 0; i < 6; i++) {
     await page.keyboard.press('Backspace');
     await page.waitForTimeout(110);
     const st = await page.evaluate(`(() => {
