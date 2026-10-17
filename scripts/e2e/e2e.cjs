@@ -86,6 +86,8 @@ const DOC = '---\ntitle: 花粉数据集\naliases: [PollenDB, 花粉库]\ntags: 
 
   // ===== P4: [[page# 章节（mock headings） + [[page| 别名 =====
   await clickPEnd();
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(250);
   await page.keyboard.type('[[全新世温度#');
   await page.waitForTimeout(800);
   console.log('P4 #mode hint:', JSON.stringify(await page.evaluate(HINT)));
@@ -94,6 +96,8 @@ const DOC = '---\ntitle: 花粉数据集\naliases: [PollenDB, 花粉库]\ntags: 
   console.log('P4 #mode inserted:', await page.evaluate(`(() => { const ps=[...document.querySelectorAll('.vditor-wysiwyg .vditor-reset > p')]; return ps[ps.length-1].textContent.includes('#Methods'); })()`));
 
   await clickPEnd();
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(250);
   await page.keyboard.type('[[花粉数据集|Poll');
   await page.waitForTimeout(800);
   console.log('P4 |mode hint:', JSON.stringify(await page.evaluate(HINT)));
@@ -125,17 +129,46 @@ const DOC = '---\ntitle: 花粉数据集\naliases: [PollenDB, 花粉库]\ntags: 
   console.log('P5 math click-display:', m1, 'after-type:', JSON.stringify(m2));
 
   // ===== P6: [[]] 空链清理（光标不在其中时应被清理） =====
-  console.log('P6 empty cleaned:', JSON.stringify(await page.evaluate(() => ({
-    emptyNodes: document.querySelectorAll('[data-type="wikilink"][data-href=""]').length,
-    textKept: [...document.querySelectorAll('.vditor-wysiwyg .vditor-reset > p')].some(p => p.textContent.includes('[[]]'))
-  }))));
+  console.log('P6 empty-as-text:', JSON.stringify(await page.evaluate(() => {
+    const nodes = [...document.querySelectorAll('[data-type="wikilink"][data-href=""]')];
+    const anyVisible = nodes.map(n => {
+      const mk = n.querySelectorAll(':scope > .vditor-ir__marker');
+      return mk.length ? getComputedStyle(mk[0]).display : 'no-marker';
+    });
+    return { emptyNodeCount: nodes.length, markersShown: anyVisible,
+      ownPara: [...document.querySelectorAll('.vditor-wysiwyg .vditor-reset > p')].filter(p => p.textContent.includes('清理')).map(p => ({ soup: p.textContent.indexOf('[[[') >= 0, hasLiteral: p.textContent.includes('[[]]') })) };
+  })));
 
   // ===== P7: Obsidian 工具栏按钮 =====
   console.log('P7 obsidian btn:', await page.evaluate(() => [...document.querySelectorAll('.vditor-toolbar button')].some(b => (b.getAttribute('aria-label') || b.title || '').includes('Obsidian'))));
 
 
+  // ===== P7b: 同段编辑后首次点击公式应即开源码（节点级守卫快速通道回归） =====
+  const mp = await page.evaluate(() => {
+    const el = document.querySelector('.vditor-wysiwyg [data-type="math-inline"]');
+    const p = el.closest('p') || el;
+    const r = p.getBoundingClientRect();
+    return { x: r.x + 14, y: r.y + Math.min(r.height / 2, 10) };
+  });
+  await page.mouse.click(mp.x, mp.y);
+  await page.keyboard.type('字');
+  await page.waitForTimeout(450);
+  const mc = await page.evaluate(() => {
+    const el = document.querySelector('.vditor-wysiwyg [data-type="math-inline"] .vditor-wysiwyg__preview') || document.querySelector('.vditor-wysiwyg [data-type="math-inline"]');
+    const r = el.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  });
+  await page.mouse.click(mc.x, mc.y);
+  await page.waitForTimeout(350);
+  console.log('P7b first-click-open:', await page.evaluate(() => {
+    const code = document.querySelector('.vditor-wysiwyg [data-type="math-inline"] code');
+    return code ? getComputedStyle(code).display : 'no-code';
+  }));
+
   // ===== P8: 尾部 Backspace 删除 [[x]] —— 无括号汤、光标不离编辑器 =====
   await clickPEnd();
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(250);
   await page.keyboard.type('[[');
   await page.waitForTimeout(600);
   await page.keyboard.press('Tab');

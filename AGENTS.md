@@ -54,7 +54,7 @@ vsc-office-viewer/
 
 ## 4. 关键避坑与注意事项
 
-0. **WYSIWYG DOM 手术红线**：任何对编辑区 DOM 的旁路修改（unwrap/remove）必须走"块级光标守卫"（光标所在块与目标节点有包含关系即跳过），且不得在打字过程中定时重试——Vditor 每键重解析+ wbr 还原光标，旁路手术=光标乱跳。空双链的净化放在保存层（index.js normalizeWikilinkSoup），不碰 DOM。
+0. **WYSIWYG DOM 手术红线**：编辑区（光标可能所在的块）内禁止一切旁路 DOM 结构手术（replaceWith 等）——Vditor 每键重解析 + wbr 还原光标，旁路手术=光标乱跳（历史事故：`[[]]` unwrap）。`[[]]` 的既定处理：CSS 显示为 `[[]]` 字面文本、由用户直接删除，文件层由 `normalizeWikilinkSoup` 收敛，不做 DOM 手术。唯一豁免：永不承载光标的空占位移除（`.vditor-cm-host`）走节点级守卫即时执行。
 
 1. **行内公式重叠坑**:
    新版 Lute 引擎生成的 `<code data-type="math-inline">` 默认不带隐藏样式。必须在 `vditor.css` 中维持 `code[data-type="math-inline"] { display: none; }`，否则 LaTeX 源码与 KaTeX 渲染结果会重叠并排显示。

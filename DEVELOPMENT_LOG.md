@@ -335,6 +335,20 @@ node scripts/e2e/e2e.cjs
 
 ---
 
+### 21. 采纳"零手术"方案：彻底移除 [[]] DOM unwrap（v3.7.4-15）
+
+**决策背景**：块级光标守卫虽非破坏性修改（纯 fork 本地防御，upstream 无此代码路径，merging 零冲突），但按"更保守"方针进一步收敛——**编辑区 DOM 彻底不做结构手术**，与上游行为差异更小。
+
+**新方案（三层，全绿验证于历轮 E2E）**：
+1. 实测确认：正文中的 `[[]]` Lute 本就不解析成节点（P6 emptyNodeCount=0），"空节点"仅是编辑瞬时中间态；
+2. 删除 unwrap 手术及其重试——光标乱跳的根源（DOM 结构变更摧毁 Vditor wbr 光标还原）从机制上消除；空链内容由 CSS 显示 `[[]]` 字面标记，用户直接 Backspace 删除即可；
+3. 文件层由保存时 `normalizeWikilinkSoup` 收敛括号汤（P8 SAVED-MD soup-free=true）。
+`.vditor-cm-host` 移除保留（空占位永不承载光标，节点级守卫，非结构性、无选区风险——首点即开公式 P7b=inline-block 依赖它）。
+
+**E2E 已知局限**：探针共用文档+clickPEnd"末段落"定位，相互有污染（# 与 | 模式各在某轮全绿过），逐探针独立 fixture 属后续改进项。
+
+---
+
 ## 发布流程
 
 ```bash
