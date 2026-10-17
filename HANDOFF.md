@@ -1,33 +1,28 @@
 # 项目交接卡 (Hot SSOT)
 
 ## 1. 停滞断点与当前状态
-- **当前版本**: v3.7.4-5（保持 `3.7.4-x` 与上游及 publisher 严格对齐；白屏 SyntaxError 彻底修复）。
-- **已交付功能**:
-  1. Obsidian 双链语法 `[[目标|别名]]` 多模式渲染与原地所见即所得展开编辑；
-  2. 行内数学公式源码重叠 bug 修复，双链经典链接蓝高亮；
-  3. `[[` 输入实时联想补全（支持文件名、frontmatter aliases、表格自适应 `\|` 转义）；
-  4. 跨工作区与外部 `obsidianVaultPath` 双向索引与跳转打开；
-  5. 断链（未创建笔记）识别与置灰区分显示（灰色虚线下划线，悬停红）；
-  6. 点击断链交互式引导一键新建笔记（支持当前目录或 Obsidian 知识库）。
-- **关键问题修复**:
-  - **白屏根因**: `vditor.js` 中字符串字面量错误漏出 `0x0A` 换行字节触发词法 `SyntaxError`，已用 `\\n` 修复并通过 `node --check` 机械验证；
-  - **版本与防覆盖**: 依指示保持 `3.7.4-5`，防商店更新只需在扩展列表中点击齿轮禁用自动更新。
-- **当前停滞断点**: 核心功能全部闭环，等待 Tag 构建验证。
+- **当前版本**: v3.7.4-8（YAML 折叠卡片 + 编辑器去重 + 加载性能治理）。
+- **已交付**: 双链渲染/别名/展开编辑、`[[` 联想补全、跨库联动、断链橙 #D39815/有效链蓝 #0050b3、断链引导新建、`[[]]` 空链可删、YAML 默认收成"YAML"徽章点击展开编辑。
+- **v3.7.4-8 三项**:
+  1. 删除 `cweijan.markdownViewer.optional` 重复注册（Open With 只剩一个）；
+  2. 索引扫描：构造函数激活时启动 → 改为首次打开 md 懒启动；3000 文件同步 readSync → 收集列表 + 24 个/批 fs.promises 异步读；
+  3. YAML frontmatter：CSS 徽章折叠 + util.js selectionchange/click 展开定位光标。
+- **当前停滞断点**: 已提交推送 + tag v3.7.4-8，等 CI 出 .vsix；待用户实测补全弹层、YAML 折叠、打开速度。
 
 ## 2. 一键验证命令
 ```bash
-# 1. 验证所有 Webview JS 语法无报错
-node --check resource/vditor/vditor.js && node --check resource/vditor/util.js
-# 2. 检查 GitHub Actions Release 构建与发布状态
-gh run list -R chmzs/vscode-office-enhanced --limit 3
+node --check resource/vditor/util.js && node --check resource/vditor/index.js   # JS 语法
+python -c "import json; json.load(open('package.json',encoding='utf-8'))"       # JSON 有效
+gh run list -R chmzs/vscode-office-enhanced --limit 3                            # CI 状态
 ```
 
 ## 3. 试错黑名单（严禁踩坑）
-- ❌ **版本号四段式**: `@vscode/vsce` 强制遵循 SemVer（拒绝 `3.7.4.4`），修补统一用 `3.7.4-x`。
-- ❌ **JS 注入字面量换行**: 在单行 JS 中替换代码严禁漏出原始 `\n` 换行符，必须使用转义符 `\\n`，否则引发解析失败白屏。
-- ❌ **行内公式 CSS 取消**: 切勿移除 `code[data-type="math-inline"] { display: none; }`。
+- ❌ 版本号四段式（vsce 拒绝）；统一 `3.7.4-x`，publisher `rjwang`。
+- ❌ 在单行压缩 JS 里注入原始 `\n` 字节（SyntaxError→白屏）。
+- ❌ math-inline 无条件 `display:none`（毁掉公式点击编辑），须 `:not([style*="display: inline"])`。
+- ❌ 扩展激活即同步扫盘（卡打开速度）；必须懒启动 + 分批异步。
+- ❌ 恢复 `markdownViewer.optional` 注册（会在 Open With 出现重复项）。
 
 ## 4. 下一步原子动作
-新会话接手后若开启新特性：
-1. 从 GitHub Releases 下载 `vscode-office-enhanced-3.7.4-5.vsix` 安装并在插件设置禁用自动更新；
-2. 遵循 `AGENTS.md` 约定的架构与规范继续迭代。
+1. CI 绿后安装 `vscode-office-enhanced-3.7.4-8.vsix` 实测三处修复；
+2. 通过后进入未来计划：重命名自动更新双链 → 悬浮预览卡片（见 DEVELOPMENT_LOG.md）。

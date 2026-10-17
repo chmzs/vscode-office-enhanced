@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { openSync, readSync, closeSync, existsSync, readdirSync, statSync, realpathSync } from 'fs';
+import { openSync, readSync, closeSync, existsSync, readdirSync, statSync, realpathSync, promises as fsp } from 'fs';
 import { basename, extname, join, relative, resolve } from 'path';
 
 export interface WikilinkNote {
@@ -10,55 +10,80 @@ export interface WikilinkNote {
     source: 'workspace' | 'vault';
 }
 
-/**
- * 快速解析 Markdown 开头的 frontmatter aliases
- * 仅读取前 1500 字节，并在 finally 中安全释放文件句柄，避免资源泄漏
- */
+interface PendingNote {
+    name: string;
+    relPath: string;
+    fsPath: string;
+    source: 'workspace' | 'vault';
+}
+
+/** 从 Markdown 头部文本解析 frontmatter aliases（纯函数） */
+export function parseAliasesFromText(text: string): string[] {
+    const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    if (!match) return [];
+    const fm = match[1];
+    const aliases: string[] = [];
+
+    // 1. 行内数组格式: aliases: [a, b]
+    const inlineMatch = fm.match(/^(?:aliases|alias)\s*:\s*\[(.*?)\]/m);
+    if (inlineMatch) {
+        inlineMatch[1].split(',').forEach(s => {
+            const trimmed = s.trim().replace(/^['"]|['"]$/g, '');
+            if (trimmed) aliases.push(trimmed);
+        });
+        return aliases;
+    }
+
+    // 2. YAML 列表格式: aliases:\n  - a\n  - b
+    const listMatch = fm.match(/^(?:aliases|alias)\s*:\s*\r?\n((?:[ \t]*-[ \t]+[^\r\n]+\r?\n?)+)/m);
+    if (listMatch) {
+        listMatch[1].split(/\r?\n/).forEach(line => {
+            const item = line.replace(/^[ \t]*-[ \t]+/, '').trim().replace(/^['"]|['"]$/g, '');
+            if (item) aliases.push(item);
+        });
+        return aliases;
+    }
+
+    // 3. 单值格式: alias: xxx
+    const singleMatch = fm.match(/^(?:aliases|alias)\s*:\s*([^\r\n\[]+)/m);
+    if (singleMatch) {
+        const val = singleMatch[1].trim().replace(/^['"]|['"]$/g, '');
+        if (val) aliases.push(val);
+    }
+
+    return aliases;
+}
+
+/** 读取文件头 1500 字节并解析 aliases（同步，仅用于单文件增量场景） */
 export function extractFrontmatterAliases(filePath: string): string[] {
     let fd: number | undefined;
     try {
         fd = openSync(filePath, 'r');
         const buffer = Buffer.alloc(1500);
         const bytesRead = readSync(fd, buffer, 0, 1500, 0);
-        const text = buffer.toString('utf8', 0, bytesRead);
-        const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-        if (!match) return [];
-        const fm = match[1];
-        const aliases: string[] = [];
-
-        // 1. 行内数组格式: aliases: [a, b]
-        const inlineMatch = fm.match(/^(?:aliases|alias)\s*:\s*\[(.*?)\]/m);
-        if (inlineMatch) {
-            inlineMatch[1].split(',').forEach(s => {
-                const trimmed = s.trim().replace(/^['"]|['"]$/g, '');
-                if (trimmed) aliases.push(trimmed);
-            });
-            return aliases;
-        }
-
-        // 2. YAML 列表格式: aliases:\n  - a\n  - b
-        const listMatch = fm.match(/^(?:aliases|alias)\s*:\s*\r?\n((?:[ \t]*-[ \t]+[^\r\n]+\r?\n?)+)/m);
-        if (listMatch) {
-            listMatch[1].split(/\r?\n/).forEach(line => {
-                const item = line.replace(/^[ \t]*-[ \t]+/, '').trim().replace(/^['"]|['"]$/g, '');
-                if (item) aliases.push(item);
-            });
-            return aliases;
-        }
-
-        // 3. 单值格式: alias: xxx
-        const singleMatch = fm.match(/^(?:aliases|alias)\s*:\s*([^\r\n\[]+)/m);
-        if (singleMatch) {
-            const val = singleMatch[1].trim().replace(/^['"]|['"]$/g, '');
-            if (val) aliases.push(val);
-        }
-
-        return aliases;
+        return parseAliasesFromText(buffer.toString('utf8', 0, bytesRead));
     } catch {
         return [];
     } finally {
         if (fd !== undefined) {
             try { closeSync(fd); } catch { /* ignore */ }
+        }
+    }
+}
+
+/** 异步版：读文件头 1500 字节并解析 aliases，避免批量扫描阻塞扩展宿主事件循环 */
+async function readAliasesAsync(filePath: string): Promise<string[]> {
+    let fh: fsp.FileHandle | undefined;
+    try {
+        fh = await fsp.open(filePath, 'r');
+        const buffer = Buffer.alloc(1500);
+        const { bytesRead } = await fh.read(buffer, 0, 1500, 0);
+        return parseAliasesFromText(buffer.toString('utf8', 0, bytesRead));
+    } catch {
+        return [];
+    } finally {
+        if (fh) {
+            try { await fh.close(); } catch { /* ignore */ }
         }
     }
 }
@@ -72,6 +97,8 @@ export class WikilinkService {
 
     private debounceTimer: NodeJS.Timeout | null = null;
     private currentVaultPath: string | undefined;
+    /** 首次扫描完成 Promise，供外部等待索引就绪 */
+    public ready: Promise<void>;
 
     public static getInstance(): WikilinkService {
         if (!WikilinkService.instance) {
@@ -81,7 +108,10 @@ export class WikilinkService {
     }
 
     public async initialize(context?: vscode.ExtensionContext) {
-        await this.refresh();
+        if (!this.ready) {
+            this.ready = this.refresh();
+        }
+        await this.ready;
 
         // 监听工作区内的 Markdown 文件变动
         const watcher = vscode.workspace.createFileSystemWatcher('**/*.md');
@@ -121,24 +151,20 @@ export class WikilinkService {
 
     public async refresh() {
         this.notesMap.clear();
+        const pending: PendingNote[] = [];
 
-        // 1. 扫描当前工作区所有 Markdown 文件
+        // 1. 收集当前工作区所有 Markdown 文件（只收集路径，别名稍后异步批量读）
         const uris = await vscode.workspace.findFiles(
             '**/*.md',
             '**/{node_modules,.git,dist,out,build,.vscode,.obsidian}/**',
             3000
         );
-
         for (const uri of uris) {
             const fsPath = uri.fsPath;
-            const name = basename(fsPath, '.md');
-            const relPath = vscode.workspace.asRelativePath(uri);
-            const aliases = extractFrontmatterAliases(fsPath);
-            this.notesMap.set(fsPath, {
-                name,
-                relPath,
+            pending.push({
+                name: basename(fsPath, '.md'),
+                relPath: vscode.workspace.asRelativePath(uri),
                 fsPath,
-                aliases,
                 source: 'workspace'
             });
         }
@@ -160,15 +186,29 @@ export class WikilinkService {
         if (vaultPath && existsSync(vaultPath)) {
             this.currentVaultPath = vaultPath;
             const visited = new Set<string>();
-            this.scanExternalVault(vaultPath, vaultPath, visited, 0);
+            this.scanExternalVault(vaultPath, vaultPath, visited, 0, pending);
         } else {
             this.currentVaultPath = undefined;
+        }
+
+        // 3. 分块异步读取别名（并发 24，避免占满句柄/事件循环）
+        const CHUNK = 24;
+        const seen = new Set<string>();
+        for (let i = 0; i < pending.length; i += CHUNK) {
+            const chunk = pending.slice(i, i + CHUNK).filter(p => {
+                if (seen.has(p.fsPath)) return false;
+                seen.add(p.fsPath);
+                return true;
+            });
+            const aliasLists = await Promise.all(chunk.map(p => readAliasesAsync(p.fsPath)));
+            chunk.forEach((p, j) => this.notesMap.set(p.fsPath, { ...p, aliases: aliasLists[j] }));
         }
 
         this.triggerDebouncedChange();
     }
 
-    private scanExternalVault(dir: string, rootDir: string, visited: Set<string>, depth: number) {
+    /** 收集 Vault 目录树中的 md 文件（纯目录遍历，不做 IO 读取） */
+    private scanExternalVault(dir: string, rootDir: string, visited: Set<string>, depth: number, out: PendingNote[]) {
         if (depth > 12) return; // 防止过深目录
         try {
             const realDir = realpathSync(dir);
@@ -182,19 +222,11 @@ export class WikilinkService {
                     if (entry.name === '.obsidian' || entry.name === '.trash' || entry.name === '.git' || entry.name === 'node_modules') {
                         continue;
                     }
-                    this.scanExternalVault(fullPath, rootDir, visited, depth + 1);
+                    this.scanExternalVault(fullPath, rootDir, visited, depth + 1, out);
                 } else if (entry.isFile() && extname(entry.name).toLowerCase() === '.md') {
-                    if (this.notesMap.has(fullPath)) continue;
                     const name = basename(entry.name, '.md');
                     const relPath = join(basename(rootDir), relative(rootDir, fullPath)).replace(/\\/g, '/');
-                    const aliases = extractFrontmatterAliases(fullPath);
-                    this.notesMap.set(fullPath, {
-                        name,
-                        relPath,
-                        fsPath: fullPath,
-                        aliases,
-                        source: 'vault'
-                    });
+                    out.push({ name, relPath, fsPath: fullPath, source: 'vault' });
                 }
             }
         } catch {

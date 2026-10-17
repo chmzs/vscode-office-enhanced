@@ -70,6 +70,12 @@ export function debouncedSyncWikilinksStatus() {
 }
 
 export function syncWikilinksStatus() {
+    // 空双链 [[]]：Lute 会解析成 data-href 为空的不可见节点（无法选中删除），
+    // 一律还原为普通文本，让用户能正常看到并删除
+    document.querySelectorAll('[data-type="wikilink"][data-href=""], [data-type="wikilink-embed"][data-href=""]').forEach(node => {
+        node.replaceWith(document.createTextNode(node.textContent));
+    });
+
     const links = document.querySelectorAll('[data-type="wikilink"], .obsidian-wikilink');
     if (!links || links.length === 0) return;
     links.forEach(link => {
@@ -117,6 +123,10 @@ export const hotKeys = [
     {
         key: '[[',
         hint: (key) => {
+            // 索引未就绪时主动拉取一次（解决插件启动扫描与 open 事件的竞态）
+            if (!cachedWikilinks.length) {
+                handler.emit('getWikilinks');
+            }
             const query = (key || '').toLowerCase().trim();
             const results = [];
 
@@ -359,12 +369,41 @@ export const openLink = () => {
         }
     };
 
-    document.addEventListener('selectionchange', syncWikilinkExpand);
+    // YAML frontmatter：光标离开折叠块时自动收起
+    const syncYamlCollapse = () => {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) return;
+        const container = selection.getRangeAt(0).startContainer;
+        const anchorEl = container.nodeType === 1 ? container : container.parentElement;
+        const currentYaml = anchorEl?.closest?.('[data-type="yaml-front-matter"]');
+        document.querySelectorAll('[data-type="yaml-front-matter"].yaml-collapse--active').forEach(node => {
+            if (node !== currentYaml) node.classList.remove('yaml-collapse--active');
+        });
+    };
+
+    document.addEventListener('selectionchange', () => {
+        syncWikilinkExpand();
+        syncYamlCollapse();
+    });
     document.addEventListener('click', (e) => {
         const target = e.target;
         const wikilink = target.closest?.('[data-type="wikilink"]');
         if (wikilink && !isCompose(e)) {
             wikilink.classList.add('vditor-ir__node--expand');
+        }
+        // YAML frontmatter 徽章：点击展开源码并定位光标
+        const yamlBlock = target.closest?.('[data-type="yaml-front-matter"]');
+        if (yamlBlock && yamlBlock.closest('.vditor-wysiwyg') && !yamlBlock.classList.contains('yaml-collapse--active')) {
+            yamlBlock.classList.add('yaml-collapse--active');
+            const code = yamlBlock.querySelector('pre code, pre');
+            if (code) {
+                const r = document.createRange();
+                r.setStart(code.firstChild || code, 0);
+                r.collapse(true);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(r);
+            }
         }
     });
 }

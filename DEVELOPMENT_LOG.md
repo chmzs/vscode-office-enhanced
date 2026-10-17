@@ -236,6 +236,41 @@ emoji: {
 - `resource/vditor/index.js` — 启动 DOM 变动监听器 `initWikilinkObserver()`。
 - `resource/vditor/vditor.css` — 增加暗色与浅色自适应的 `.vditor-wikilink--unresolved` 灰色虚线和悬停红色报警样式。
 
+### 14. 白屏修复、版本对齐、配色简化与补全竞态修复（v3.7.4-5 → 3.7.4-7）
+
+**问题与需求**：
+1. **白屏重大 Bug**：`[[` 补丁在 `getKey` 中引入了字面换行符（`\n` 被展开成 0x0A），触发 `SyntaxError` → Vditor 未定义 → 编辑器全白（3.7.4-4 及之前受影响，3.7.4-2 正常）；
+2. **版本策略**：`3.7.4.4` 违反 SemVer 无法打包；`-x` 预发布号低于正式版 `3.7.4`，会被商店检测降级更新。按用户决定统一 `3.7.4-x` + publisher `rjwang`，对齐上游版本，方便后续 merge 上游更新；防商店覆盖通过扩展面板禁用自动更新解决；
+3. **配色简化**：有效链纯蓝 `#0050b3`、断链纯橙 `#D39815`，去下划线/半透明/hover 背景（hover 仅显示下划线）；此前编辑模式下双链显示黑色的根因：display 别名 span 未从父节点继承颜色，颜色只加在外层 span 上；
+4. **行内公式无法编辑**：CSS 修复把 math-inline 源码 `display:none` 写成了无条件规则，覆盖掉 Vditor 点击展开时 JS 设置的 `style.display="inline"`，导致永远不可编辑；改为仅在非展开状态隐藏（`:not([style*="display: inline"])` + IR `:not(.vditor-ir__node--expand)`）；
+5. **`[[` 补全不显示**：webview `open` 事件与扩展端异步 `refresh()` 存在竞态——索引未扫完就发送 open，后续 `wikilinksUpdated` 推送又早于 webview 监听器注册而丢失，候选表永远为空。三重修复：webview `after()` 主动 `emit("getWikilinks")`；`getWikilinks` 响应方 `await` 首次扫描 Promise（service 新增 `ready` 字段）；hint 回调发现空表时再触发一次拉取；
+6. **`[[]]` 空双链不可删除**：Lute 把 `[[]]` 解析成 `data-href=""` 的空节点（标记隐藏、display 为空）→ 不可见且无法删除。修复：`syncWikilinksStatus` 将空节点 unwrap 回纯文本 `[[]]`（已验证 `VditorDOM2Md` 往返稳定），并加 CSS 兜底让空节点在清理前显示原始标记可删除。
+
+**修改文件**：
+- `resource/vditor/vditor.js` — 换行符转义修复（白屏根因）
+- `resource/vditor/util.js` — 空 `[[]]` unwrap 清理；`[[` hint 空表兜底拉取
+- `resource/vditor/index.js` — `after()` 内 `handler.emit("getWikilinks")`
+- `resource/vditor/vditor.css` — 蓝/橙纯色配色（含 display span 继承）、行内公式可编辑条件、空双链兜底显示
+- `src/service/markdown/wikilinkService.ts` — 新增 `ready` Promise
+- `src/provider/markdownEditorProvider.ts` — `getWikilinks` 响应等待首次扫描
+- `package.json` — 版本 `3.7.4-7`，publisher 恢复 `rjwang`
+
+### 15. YAML 折叠卡片、编辑器去重与加载性能治理（v3.7.4-8）
+
+**问题与需求**：
+1. **YAML frontmatter 显示不优雅**：WYSIWYG 下只显示一个孤零零的 "F" 徽章（Lute 的默认样式），无法折叠/展开；
+2. **打开方式出现两个本扩展编辑器**：`cweijan.markdownViewer` 与 `cweijan.markdownViewer.optional` 双注册导致 .md 右键"打开方式"重复；
+3. **md 打开变慢**：索引扫描在扩展激活时即启动，且 `extractFrontmatterAliases` 对最多 3000 个文件逐个同步 `openSync/readSync`，阻塞扩展宿主事件循环。
+
+**修复**：
+- `resource/vditor/vditor.css` — YAML 块改为折叠卡片：默认收成 "YAML" 徽章（隐藏 pre），点击展开编辑（"YAML ▾" + 源码可见），光标离开自动收起；
+- `resource/vditor/util.js` — `selectionchange` 新增 `syncYamlCollapse`；click 监听中点击 yaml 块 → 加 `yaml-collapse--active` 并把光标定位进 code；
+- `package.json` + `src/extension.ts` — 删除 `cweijan.markdownViewer.optional` 注册，Open With 只剩一个；
+- `src/service/markdown/wikilinkService.ts` — 全量扫描改为两阶段：先收集文件列表（目录遍历不读文件），再按 24 个一组 `fs.promises` 异步批量读别名（`readAliasesAsync`），事件循环不再被卡住；
+- `src/provider/markdownEditorProvider.ts` — 索引初始化从构造函数移到首次 `resolveCustomTextEditor`（懒加载 + 不阻塞，`void initialize()`）。
+
+**遗留说明（非本扩展问题）**：若"打开方式"仍有多个 Office Viewer 条目，是因为同时装了 `cweijan.vscode-office`（市场版）与本扩展，两者都会注册 md 编辑器，卸载其一即可。
+
 ---
 
 ## 发布流程

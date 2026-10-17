@@ -106,6 +106,8 @@ handler.on("open", async (md) => {
       if (editor.vditor && editor.vditor.lute) {
         editor.vditor.lute.SetObsidian(true);
       }
+      // 编辑器就绪后拉取最新双链索引（扩展端扫描是异步的，open 事件可能早于扫描完成）
+      handler.emit("getWikilinks");
       handler.on("update", content => {
         editor.setValue(content);
       })

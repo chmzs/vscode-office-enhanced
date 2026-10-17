@@ -21,12 +21,19 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     private extensionPath: string;
     private countStatus: vscode.StatusBarItem;
     private state: vscode.Memento;
+    private wikilinkInitialized = false;
+
+    /** 懒初始化双链索引：首次打开 md 才扫描，不阻塞激活与编辑器渲染 */
+    private ensureWikilinkService() {
+        if (this.wikilinkInitialized) return;
+        this.wikilinkInitialized = true;
+        void WikilinkService.getInstance().initialize(this.context);
+    }
 
     constructor(private context: vscode.ExtensionContext) {
         this.extensionPath = context.extensionPath;
         this.countStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
         this.state = context.globalState;
-        WikilinkService.getInstance().initialize(context);
     }
 
     /**
@@ -58,6 +65,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     }
 
     resolveCustomTextEditor(document: vscode.TextDocument, webviewPanel: vscode.WebviewPanel, token: vscode.CancellationToken): void | Thenable<void> {
+        this.ensureWikilinkService();
         const uri = document.uri;
         const webview = webviewPanel.webview;
         const folderPath = vscode.Uri.joinPath(uri, '..')
@@ -133,7 +141,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             handler.emit("open", buildOpenPayload())
             this.updateCount(content)
             this.countStatus.show()
-        }).on("getWikilinks", () => {
+        }).on("getWikilinks", async () => {
+            await WikilinkService.getInstance().ready;
             handler.emit("wikilinksUpdated", getWikilinksData());
         }).on("externalUpdate", e => {
             if (lastManualSaveTime && Date.now() - lastManualSaveTime < 800) return;

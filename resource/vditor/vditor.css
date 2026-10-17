@@ -1789,8 +1789,45 @@
   display: none !important;
 }
 
-/* Obsidian Wikilink Styles */
-/* 有效双链：蓝色 #0050b3，无下划线，无半透明 */
+/* YAML frontmatter 折叠卡片（WYSIWYG）：默认收成徽章，点击展开编辑，光标离开自动收起 */
+.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"] {
+  margin: 6px 0 10px 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border-color, #d1d5da);
+  border-radius: 6px;
+  background: var(--second-bg-color, #f6f8fa);
+  line-height: 26px;
+  cursor: pointer;
+}
+.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"]:before {
+  content: "YAML";
+  float: none;
+  display: inline;
+  margin: 0;
+  padding: 0 8px 0 0;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: var(--second-color, #8c959f);
+}
+.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"] > pre {
+  display: none;
+}
+.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"].yaml-collapse--active {
+  line-height: 1.5;
+  padding: 6px 10px;
+  background: var(--textarea-background-color, #fafbfc);
+  cursor: text;
+}
+.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"].yaml-collapse--active > pre {
+  display: block;
+}
+.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"].yaml-collapse--active:before {
+  content: "YAML ▾";
+  display: block;
+  padding: 0 0 4px;
+}
+
+/* Obsidian Wikilink Styles *//* 有效双链：蓝色 #0050b3，无下划线，无半透明 */
 .vditor-wysiwyg [data-type="wikilink"],
 .vditor-wysiwyg [data-type="wikilink"] .vditor-wikilink__display,
 .vditor-ir [data-type="wikilink"],
@@ -1814,6 +1851,17 @@
   cursor: pointer;
   opacity: 1 !important;
   font-weight: 500;
+}
+
+/* 空双链 [[]]：JS 清理前的 CSS 兜底，直接显示原始标记，可正常选中删除 */
+.vditor-wysiwyg .vditor-ir__node[data-type="wikilink"][data-href=""] .vditor-ir__marker,
+.vditor-ir .vditor-ir__node[data-type="wikilink"][data-href=""] .vditor-ir__marker,
+.vditor-wysiwyg .vditor-ir__node[data-type="wikilink-embed"][data-href=""] .vditor-ir__marker,
+.vditor-ir .vditor-ir__node[data-type="wikilink-embed"][data-href=""] .vditor-ir__marker {
+  display: inline !important;
+  width: auto !important;
+  height: auto !important;
+  color: var(--second-color, #8c959f);
 }
 
 /* 默认收起/阅读状态：隐藏 markers 和 source，仅显示 display 别名 */
