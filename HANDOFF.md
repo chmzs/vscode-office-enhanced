@@ -1,28 +1,28 @@
 # 项目交接卡 (Hot SSOT)
 
 ## 1. 停滞断点与当前状态
-- **当前版本**: v3.7.4-8（YAML 折叠卡片 + 编辑器去重 + 加载性能治理）。
-- **已交付**: 双链渲染/别名/展开编辑、`[[` 联想补全、跨库联动、断链橙 #D39815/有效链蓝 #0050b3、断链引导新建、`[[]]` 空链可删、YAML 默认收成"YAML"徽章点击展开编辑。
-- **v3.7.4-8 三项**:
-  1. 删除 `cweijan.markdownViewer.optional` 重复注册（Open With 只剩一个）；
-  2. 索引扫描：构造函数激活时启动 → 改为首次打开 md 懒启动；3000 文件同步 readSync → 收集列表 + 24 个/批 fs.promises 异步读；
-  3. YAML frontmatter：CSS 徽章折叠 + util.js selectionchange/click 展开定位光标。
-- **当前停滞断点**: 已提交推送 + tag v3.7.4-8，等 CI 出 .vsix；待用户实测补全弹层、YAML 折叠、打开速度。
+- **当前版本**: v3.7.4-9（E2E 实测回归全绿后发布）。
+- **已交付**: 双链渲染/别名/展开编辑、`[[` 联想补全、跨库联动、断链橙 #D39815/有效链蓝 #0050b3、断链引导新建、`[[]]` 可删、YAML 折叠徽章、Open With 去重、异步懒扫描提速。
+- **v3.7.4-9 三个根因**（详见 DEVELOPMENT_LOG #16）：
+  1. genHTML 补丁 `var r=e.html` 遮蔽外层 hint 实例 → 每次候选渲染抛 `splitChar of undefined`（补全/emoji 全灭）；
+  2. 新 Lute 的 math-inline 内 `vditor-cm-host` 空 span 让 Vditor `ne()` 点击展开崩 null → 公式不可编辑 + YAML 展开连带失败；
+  3. 公式 `<code>` 自身带 `data-type="math-inline"`，closest 命中自身致编辑态判断失效 → selectionchange 驱动 `syncMathInlineEdit` 修正。
+- **排查资产（必须会用）**: `scripts/e2e/`（playwright-core 驱动本机 Edge 无头浏览器加载真实 webview 资源，含 6 组探针）。改 `resource/vditor/` 任何 JS 后，先跑 harness 再提交。
+- **当前停滞断点**: 等待用户装机复验；通过后进入"重命名自动更新双链 → 悬浮预览卡片"计划。
 
 ## 2. 一键验证命令
 ```bash
-node --check resource/vditor/util.js && node --check resource/vditor/index.js   # JS 语法
-python -c "import json; json.load(open('package.json',encoding='utf-8'))"       # JSON 有效
-gh run list -R chmzs/vscode-office-enhanced --limit 3                            # CI 状态
+node --check resource/vditor/vditor.js && node --check resource/vditor/util.js
+"d:/Users/chmzs/Documents/Pixi_env/.pixi/envs/geo/python" -m http.server 8765 --bind 127.0.0.1 &
+node scripts/e2e/e2e.cjs   # 期望: YAML active:true / HINT buttons:5→2 / ENTER 插入 / MATH inline-block / EMPTY false / 无 pageerror
 ```
 
 ## 3. 试错黑名单（严禁踩坑）
-- ❌ 版本号四段式（vsce 拒绝）；统一 `3.7.4-x`，publisher `rjwang`。
-- ❌ 在单行压缩 JS 里注入原始 `\n` 字节（SyntaxError→白屏）。
-- ❌ math-inline 无条件 `display:none`（毁掉公式点击编辑），须 `:not([style*="display: inline"])`。
-- ❌ 扩展激活即同步扫盘（卡打开速度）；必须懒启动 + 分批异步。
-- ❌ 恢复 `markdownViewer.optional` 注册（会在 Open With 出现重复项）。
+- ❌ 在压缩 JS 的 forEach 回调里用同名局部变量遮蔽外层实例（splitChar 事故根源）。
+- ❌ 假设 Lute 输出结构 = 旧 Vditor 假设（cm-host、code 自带 data-type 都是新差异点）。
+- ❌ 改完不跑 scripts/e2e 就发布（3.7.4-3~8 连续 6 版盲改全错）。
+- ❌ 版本号四段式；❌ 单行 JS 注入原始换行字节；❌ 无条件 math-inline display:none。
 
 ## 4. 下一步原子动作
-1. CI 绿后安装 `vscode-office-enhanced-3.7.4-8.vsix` 实测三处修复；
-2. 通过后进入未来计划：重命名自动更新双链 → 悬浮预览卡片（见 DEVELOPMENT_LOG.md）。
+1. 用户装 `vscode-office-enhanced-3.7.4-9.vsix` 复验；
+2. 通过后按 AGENTS.md 启动"重命名自动更新"（WorkspaceEdit 方案见日志/对话）。

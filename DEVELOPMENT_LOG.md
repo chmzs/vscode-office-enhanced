@@ -271,6 +271,25 @@ emoji: {
 
 **遗留说明（非本扩展问题）**：若"打开方式"仍有多个 Office Viewer 条目，是因为同时装了 `cweijan.vscode-office`（市场版）与本扩展，两者都会注册 md 编辑器，卸载其一即可。
 
+### 16. E2E 排查体系建立与三大顽疾根治（v3.7.4-9）
+
+**背景**：3.7.4-8 用户实测反馈"YAML 没折叠、`[[` 补全没弹、公式点不开"。教训：对压缩产物 vditor.js 盲改无法验证，必须建立可复现的浏览器级 E2E 环境。
+
+**新增排查资产**：`scripts/e2e/e2e.html + e2e.cjs`（playwright-core 驱动本机 Edge 无头浏览器，加载真实 `resource/vditor/` 资源，桩 `events.open` 模拟 webview 打开文档；`python -m http.server 8765` 起服务）。探针覆盖：YAML 折叠/点击展开、`[[` 候选弹出/过滤/Enter 插入、公式点击编辑/连续输入/失焦收起、`[[]]` 空节点清理、pageerror 捕获。
+
+**三个根因（全部经 harness 复现 → 修复 → 回归绿）**：
+1. **补全从未弹出**：3.7.4-3 的 genHTML 补丁 `if(!(n>(r.splitChar==="[["?15:7)))` 中，回调内 `var r=e.html` 把外层 `r=this`（hint 实例）**变量遮蔽**成 undefined → 每次任何 hint 渲染都抛 `Cannot read properties of undefined (reading 'splitChar')`（连原生 emoji `:` 补全一起打死）。修复：把 `__max` 提升到 forEach 之前求值。
+2. **公式点击编辑崩溃**：新 Lute 在 math-inline 的 `<code>` 与 `.vditor-wysiwyg__preview` 之间插入旧版 Vditor 不认识的 `<span class="vditor-cm-host">`；`ne()` 把"preview 的前一个兄弟"当源码容器 → 对空 cm-host 读 `.firstChild.firstChild` 抛 null 异常，点击展开链路整体炸断。修复：`syncWikilinksStatus` 每次渲染后移除 `.vditor-cm-host`，还原 code+preview 结构。
+3. **公式编辑态保持与 YAML 展开竞态**：a) `<code>` 自身也带 `data-type="math-inline"`，`closest()` 命中 code 本身导致按父级比较的判断失效 → 键入一个字符即被 SpinVditorDOM 重渲染折叠；修复为 `activeMath===code || code.contains(activeMath)` 并新增 `syncMathInlineEdit`（selectionchange 驱动源码可见性，编辑不被重渲染打断）。b) YAML 点击展开被紧随的 selectionchange 立即收回：改捕获阶段监听 + `data-yamlHold` 600ms 宽限期 + 展开后 `void offsetWidth` 强制重排再定位光标。
+
+**验证结果（headless Edge 实测）**：YAML 默认 `display:none`+徽章、点击展开 `block`；`[[` 弹 5 候选、`[[全新` 过滤到 2、Enter 插入 `[[全新世温度]]`；公式点击 `inline-block` 可连输、离开收起；`[[]]` 无残留；pageerror 清零。
+
+**回归命令**：
+```bash
+python -m http.server 8765 --bind 127.0.0.1 &
+node scripts/e2e/e2e.cjs
+```
+
 ---
 
 ## 发布流程

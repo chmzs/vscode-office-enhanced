@@ -70,6 +70,11 @@ export function debouncedSyncWikilinksStatus() {
 }
 
 export function syncWikilinksStatus() {
+    // 新版 Lute 在行内公式里渲染 vditor-cm-host 空占位 span，旧版 Vditor 的 ne() 点击
+    // 展开逻辑会把"前一个兄弟节点"当源码容器（r.firstChild 为 null 直接抛错，连带
+    // 公式编辑与 YAML 展开失效），统一移除以还原 code+preview 结构
+    document.querySelectorAll('.vditor-cm-host').forEach(el => el.remove());
+
     // 空双链 [[]]：Lute 会解析成 data-href 为空的不可见节点（无法选中删除），
     // 一律还原为普通文本，让用户能正常看到并删除
     document.querySelectorAll('[data-type="wikilink"][data-href=""], [data-type="wikilink-embed"][data-href=""]').forEach(node => {
@@ -377,33 +382,65 @@ export const openLink = () => {
         const anchorEl = container.nodeType === 1 ? container : container.parentElement;
         const currentYaml = anchorEl?.closest?.('[data-type="yaml-front-matter"]');
         document.querySelectorAll('[data-type="yaml-front-matter"].yaml-collapse--active').forEach(node => {
-            if (node !== currentYaml) node.classList.remove('yaml-collapse--active');
+            if (node === currentYaml) return;
+            // 刚被点击展开的块给 600ms 宽限期，等光标落进源码后再由后续选区变化接管
+            const hold = parseInt(node.dataset?.yamlHold || '0', 10);
+            if (Date.now() - hold < 600) return;
+            node.classList.remove('yaml-collapse--active');
         });
     };
 
     document.addEventListener('selectionchange', () => {
         syncWikilinkExpand();
         syncYamlCollapse();
+        syncMathInlineEdit();
     });
+
+    // 行内公式编辑态：新 Lute 不再给 math-inline 的 code 打 style="display:none"，
+    // 我们的 CSS 会把它藏起来；而每次键入 SpinVditorDOM 都会重建节点。这里在每次
+    // 选区变化时按"光标是否在公式源码内"强制同步源码可见性，保证连续打字不被折叠打断。
+    const syncMathInlineEdit = () => {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) return;
+        const container = selection.getRangeAt(0).startContainer;
+        const anchorEl = container.nodeType === 1 ? container : container.parentElement;
+        const activeMath = anchorEl?.closest?.('[data-type="math-inline"]');
+        document.querySelectorAll('.vditor-wysiwyg [data-type="math-inline"] > code').forEach(code => {
+            // 注意：code 自身也带 data-type="math-inline"，closest() 会命中它本身
+            const keep = !!activeMath && (activeMath === code || code.contains(activeMath));
+            const target = keep ? 'inline-block' : '';
+            if (code.style.display !== target) code.style.display = target;
+        });
+    };
+
+    // YAML frontmatter 徽章：点击展开源码并定位光标。
+    // 用捕获阶段监听，先于 Vditor 自身的 click 处理执行；展开后打 600ms hold 标记，
+    // 防止光标定位触发的 selectionchange 立即把它折叠回去
+    const forceExpandYaml = (blk) => {
+        blk.classList.add('yaml-collapse--active');
+        blk.dataset.yamlHold = String(Date.now());
+        void blk.offsetWidth; // 强制重排，使 pre 从 display:none 变为可见后再定位光标
+        const code = blk.querySelector('pre code, pre');
+        if (code) {
+            const r = document.createRange();
+            r.selectNodeContents(code);
+            r.collapse(true);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(r);
+        }
+    };
+    const wysiwygHost = document.querySelector('.vditor-wysiwyg');
+    if (wysiwygHost) {
+        wysiwygHost.addEventListener('click', e => {
+            const blk = e.target.closest?.('[data-type="yaml-front-matter"]');
+            if (blk && !blk.classList.contains('yaml-collapse--active')) forceExpandYaml(blk);
+        }, true);
+    }
     document.addEventListener('click', (e) => {
-        const target = e.target;
-        const wikilink = target.closest?.('[data-type="wikilink"]');
+        const wikilink = e.target.closest?.('[data-type="wikilink"]');
         if (wikilink && !isCompose(e)) {
             wikilink.classList.add('vditor-ir__node--expand');
-        }
-        // YAML frontmatter 徽章：点击展开源码并定位光标
-        const yamlBlock = target.closest?.('[data-type="yaml-front-matter"]');
-        if (yamlBlock && yamlBlock.closest('.vditor-wysiwyg') && !yamlBlock.classList.contains('yaml-collapse--active')) {
-            yamlBlock.classList.add('yaml-collapse--active');
-            const code = yamlBlock.querySelector('pre code, pre');
-            if (code) {
-                const r = document.createRange();
-                r.setStart(code.firstChild || code, 0);
-                r.collapse(true);
-                const sel = window.getSelection();
-                sel.removeAllRanges();
-                sel.addRange(r);
-            }
         }
     });
 }

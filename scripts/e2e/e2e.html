@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta id="configs" data-config='{"platform":"windows"}'>
+  <link rel="stylesheet" href="/resource/vditor/vditor.css">
+</head>
+<body>
+  <div id="vditor"></div>
+  <div class="dropdown-menu dropdown-menu-sm" id="context-menu" style="display:none;">
+    <a class="dropdown-item" id="copy" href="#">Copy</a>
+  </div>
+  <script src="/resource/lib/vscode.js"></script>
+  <script src="/resource/vditor/vditor.js"></script>
+  <script>
+    window.__openDoc = function (content) {
+      const payload = {
+        title: 'e2e.md',
+        config: {
+          editorTheme: 'Light', openOutline: false, hideToolbar: false,
+          editorMode: 'wysiwyg', editorLanguage: 'en_US', previewCode: false,
+          previewCodeHighlight: { style: 'github', showLineNumber: false },
+          viewAbsoluteLocal: false, preventMacOptionKey: true
+        },
+        scrollTop: 0, language: 'en',
+        rootPath: '/resource/vditor',
+        content: content,
+        wikilinks: [
+          { name: '全新世温度', relPath: '01_wiki/全新世温度.md', aliases: ['Holocene', '全新世'] },
+          { name: '花粉数据集', relPath: '01_wiki/花粉数据集.md', aliases: ['PollenDB'] }
+        ]
+      };
+      const attempt = () => {
+        if (events && typeof events.open === 'function') { events.open(payload); return true; }
+        return false;
+      };
+      if (attempt()) return;
+      const t = setInterval(() => { if (attempt()) clearInterval(t); }, 60);
+    };
+    window.__waitEditor = function () {
+      return new Promise(res => {
+        const t = setInterval(() => {
+          const el = document.querySelector('.vditor-wysiwyg .vditor-reset');
+          if (el && el.children.length) { clearInterval(t); res(true); }
+        }, 80);
+        setTimeout(() => { clearInterval(t); res(false); }, 8000);
+      });
+    };
+  </script>
+  <script type="module" src="/resource/vditor/index.js"></script>
+</body>
+</html>
