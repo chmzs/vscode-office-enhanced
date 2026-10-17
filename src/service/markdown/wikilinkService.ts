@@ -96,6 +96,7 @@ export class WikilinkService {
     public readonly onDidChange = this.onDidChangeEmitter.event;
 
     private debounceTimer: NodeJS.Timeout | null = null;
+    private customExcludes: string[] = [];
     private currentVaultPath: string | undefined;
     /** 首次扫描完成 Promise，供外部等待索引就绪 */
     public ready: Promise<void>;
@@ -122,7 +123,7 @@ export class WikilinkService {
 
         // 监听配置变动（如用户配置了外部 obsidianVaultPath）
         const configWatcher = vscode.workspace.onDidChangeConfiguration(e => {
-            if (e.affectsConfiguration('vscode-office.obsidianVaultPath')) {
+            if (e.affectsConfiguration('vscode-office.obsidianVaultPath') || e.affectsConfiguration('vscode-office.wikiExclude')) {
                 this.refresh();
             }
         });
@@ -145,25 +146,44 @@ export class WikilinkService {
         }, 150);
     }
 
+    /** 用户自定义排除（vscode-office.wikiExclude）：glob 模式转路径包含判断（无正则转义风险实现） */
+    private isCustomExcluded(relPath: string): boolean {
+        const bs = String.fromCharCode(92);
+        const rp = relPath.split(bs).join('/').toLowerCase();
+        for (let p of this.customExcludes) {
+            if (p.startsWith('**/')) p = p.slice(3);
+            if (p.endsWith('/**')) p = p.slice(0, -3);
+            else if (p.endsWith('/*')) p = p.slice(0, -2);
+            if (!p) continue;
+            const re = new RegExp('(^|/)' + p.split('*').join('[^/]*') + '($|/)');
+            if (re.test(rp)) return true;
+        }
+        return false;
+    }
+
     public getVaultPath(): string | undefined {
         return this.currentVaultPath;
     }
 
     public async refresh() {
         this.notesMap.clear();
+        this.customExcludes = (vscode.workspace.getConfiguration('vscode-office').get<string[]>('wikiExclude', []) || [])
+            .map(x => String(x).trim().toLowerCase()).filter(Boolean);
         const pending: PendingNote[] = [];
 
         // 1. 收集当前工作区所有 Markdown 文件（只收集路径，别名稍后异步批量读）
         const uris = await vscode.workspace.findFiles(
             '**/*.md',
-            '**/{.*,node_modules,dist,out,build,target,__pycache__}/**',
+            '**/{node_modules,dist,out,build,target,__pycache__,.git,.vscode,.obsidian,.trash}/**',
             3000
         );
         for (const uri of uris) {
             const fsPath = uri.fsPath;
+            const wsRel = vscode.workspace.asRelativePath(uri);
+            if (this.isCustomExcluded(wsRel)) continue;
             pending.push({
                 name: basename(fsPath, '.md'),
-                relPath: vscode.workspace.asRelativePath(uri),
+                relPath: wsRel,
                 fsPath,
                 source: 'workspace'
             });
@@ -226,6 +246,7 @@ export class WikilinkService {
                 } else if (entry.isFile() && extname(entry.name).toLowerCase() === '.md') {
                     const name = basename(entry.name, '.md');
                     const relPath = join(basename(rootDir), relative(rootDir, fullPath)).replace(/\\/g, '/');
+                    if (this.isCustomExcluded(relPath)) continue;
                     out.push({ name, relPath, fsPath: fullPath, source: 'vault' });
                 }
             }
@@ -238,6 +259,7 @@ export class WikilinkService {
         const fsPath = uri.fsPath;
         // 点号目录（.obsidian/.trash/.git/.smart-env 等）内的 md 不进索引，对齐 Obsidian 与库 .gitignore 忽略惯例
         if (fsPath.replace(/\\/g, '/').split('/').some(seg => seg.startsWith('.'))) { this.notesMap.delete(fsPath); return; }
+        if (this.isCustomExcluded(vscode.workspace.asRelativePath(uri))) { this.notesMap.delete(fsPath); return; }
         const name = basename(fsPath, '.md');
         const relPath = vscode.workspace.asRelativePath(uri);
         const aliases = extractFrontmatterAliases(fsPath);
@@ -302,7 +324,7 @@ export class WikilinkService {
 
         // 5. 工作区内 findFiles 兜底
         const base = basename(cleanTarget);
-        const files = await vscode.workspace.findFiles(`**/${base}.md`, '**/{.*,node_modules,dist,out,build,target,__pycache__}/**', 5);
+        const files = await vscode.workspace.findFiles(`**/${base}.md`, '**/{node_modules,dist,out,build,target,__pycache__,.git,.vscode,.obsidian,.trash}/**', 5);
         if (files.length > 0) {
             return files[0];
         }

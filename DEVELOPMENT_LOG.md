@@ -315,6 +315,14 @@ node scripts/e2e/e2e.cjs
 
 ---
 
+### 19. wikiExclude 自定义排除 + .obsidian 显式排除（v3.7.4-12）
+
+1. **`.obsidian` 排除核实**：`-11` 曾用 `**/{.*,...}/**` 通配点目录，但 `.*` 段在 VS Code glob 引擎下对隐藏目录语义不够直白。现基础排除改回**显式列表**：`{node_modules,dist,out,build,target,__pycache__,.git,.vscode,.obsidian,.trash}`（工作区扫描 + resolveFile 兜底两处），外部 Vault 遍历维持"一切点开头目录跳过"，监听增量同守卫。
+2. **新增 `vscode-office.wikiExclude`（string[]）**：用户自定义排除目录/文件（支持裸名如 `02_输出`、glob 如 `drafts/**`、`*.private.md`）。实现为零正则风险的"路径段包含"匹配（`isCustomExcluded`），应用于工作区扫描、Vault 遍历、文件监听增量三处；配置变更即时触发重扫。
+3. README 双语章节同步补文档。
+
+---
+
 ## 发布流程
 
 ```bash
