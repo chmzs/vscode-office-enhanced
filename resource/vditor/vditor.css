@@ -1857,5 +1857,47 @@
   cursor: pointer;
 }
 
+/* Wikilink 自动补全浮层样式 */
+.vditor-hint {
+  max-width: 480px !important;
+  max-height: 320px !important;
+  overflow-y: auto !important;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.22) !important;
+  border: 1px solid var(--border-color);
+  padding: 4px 0 !important;
+}
+
+.vditor-hint button {
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 5px 12px !important;
+  font-size: 13px !important;
+  line-height: 20px !important;
+}
+
+.vditor-hint__doc-icon {
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.vditor-hint__title {
+  font-weight: 500;
+  color: var(--textarea-text-color);
+  flex-shrink: 0;
+}
+
+.vditor-hint__sub {
+  font-size: 11px;
+  opacity: 0.55;
+  margin-left: auto;
+  padding-left: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
 
 

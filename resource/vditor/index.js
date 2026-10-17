@@ -1,4 +1,4 @@
-import { openLink, hotKeys, imageParser, getToolbar, autoSymbol, onToolbarClick, createContextMenu, scrollEditor } from "./util.js";
+import { openLink, hotKeys, setWikilinksCache, imageParser, getToolbar, autoSymbol, onToolbarClick, createContextMenu, scrollEditor } from "./util.js";
 
 let state;
 function loadConfigs() {
@@ -15,7 +15,13 @@ function loadConfigs() {
 loadConfigs()
 
 handler.on("open", async (md) => {
-  const { config, language } = md;
+  const { config, language, wikilinks } = md;
+  if (wikilinks) {
+    setWikilinksCache(wikilinks);
+  }
+  handler.on("wikilinksUpdated", (list) => {
+    setWikilinksCache(list);
+  });
   addAutoTheme(md.rootPath, config.editorTheme)
   handler.on('theme', theme => {
     loadTheme(md.rootPath, theme)
@@ -74,6 +80,7 @@ handler.on("open", async (md) => {
       }
     },
     hint: {
+      delay: 50,
       emoji: {
         // Unicode 12.0+ geometric emoji missing from Lute's built-in dict
         "orange_circle": "🟠",

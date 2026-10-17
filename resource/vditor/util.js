@@ -39,6 +39,11 @@ const latexSymbols = [
     { name: 'Omega', value: "\\Omega" },
 ];
 
+let cachedWikilinks = [];
+export function setWikilinksCache(list) {
+    cachedWikilinks = list || [];
+}
+
 export const hotKeys = [
     {
         key: '\\',
@@ -52,6 +57,48 @@ export const hotKeys = [
             }));
         },
     },
+    {
+        key: '[[',
+        hint: (key) => {
+            const query = (key || '').toLowerCase().trim();
+            const results = [];
+
+            // 检测光标是否处于表格单元格内部：表格内转义为 \|，普通文本为 |
+            const anchor = window.getSelection()?.anchorNode;
+            const anchorEl = anchor?.nodeType === 1 ? anchor : anchor?.parentElement;
+            const inTable = !!(anchorEl?.closest?.('table, tr, td, th'));
+            const pipe = inTable ? '\\|' : '|';
+
+            for (const item of cachedWikilinks) {
+                const nameLower = item.name.toLowerCase();
+                const nameMatches = !query || nameLower.includes(query);
+
+                // 1. 笔记文件名匹配
+                if (nameMatches) {
+                    results.push({
+                        value: `[[${item.name}]]`,
+                        html: `<span class="vditor-hint__doc-icon">📄</span> <span class="vditor-hint__title">${item.name}</span>${item.relPath ? `<span class="vditor-hint__sub">${item.relPath}</span>` : ''}`
+                    });
+                }
+
+                // 2. 别名匹配 (frontmatter aliases)
+                if (item.aliases && item.aliases.length > 0) {
+                    for (const alias of item.aliases) {
+                        if (!query || alias.toLowerCase().includes(query)) {
+                            results.push({
+                                value: `[[${item.name}${pipe}${alias}]]`,
+                                html: `<span class="vditor-hint__doc-icon">🔗</span> <span class="vditor-hint__title">${alias}</span> <span class="vditor-hint__sub">→ ${item.name}</span>`
+                            });
+                        }
+                    }
+                }
+
+                if (results.length >= 16) break;
+            }
+
+            return results;
+        }
+    }
 ]
 
 function loadRes(url) {

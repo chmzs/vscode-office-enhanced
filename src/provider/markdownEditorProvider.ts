@@ -6,6 +6,7 @@ import { Handler } from '../common/handler';
 import { Util } from '../common/util';
 import { Holder } from '../service/markdown/holder';
 import { MarkdownService } from '../service/markdownService';
+import { WikilinkService } from '../service/markdown/wikilinkService';
 import { Global } from '@/common/global';
 import { platform } from 'os';
 
@@ -24,7 +25,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     constructor(private context: vscode.ExtensionContext) {
         this.extensionPath = context.extensionPath;
         this.countStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-        this.state = context.globalState
+        this.state = context.globalState;
+        WikilinkService.getInstance().initialize(context);
     }
 
     /**
@@ -91,14 +93,33 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         let lastManualSaveTime: number;
         const config = vscode.workspace.getConfiguration("vscode-office");
 
+        const getWikilinksData = () => {
+            return WikilinkService.getInstance().getNotes().map(n => ({
+                name: n.name,
+                relPath: n.relPath,
+                aliases: n.aliases
+            }));
+        };
+
         /** Build the payload for the "open" event sent to the WebView. */
         const buildOpenPayload = () => ({
             title: basename(uri.fsPath),
             config,
             scrollTop: this.state.get(`scrollTop_${document.uri.fsPath}`, 0),
             language: vscode.env.language,
-            rootPath, content
+            rootPath, content,
+            wikilinks: getWikilinksData()
         });
+
+        // 监听双链笔记库索引更新，实时推送给 WebView
+        const wikilinkSub = WikilinkService.getInstance().onDidChange(notes => {
+            handler.emit("wikilinksUpdated", notes.map(n => ({
+                name: n.name,
+                relPath: n.relPath,
+                aliases: n.aliases
+            })));
+        });
+        handler.panel.onDidDispose(() => wikilinkSub.dispose());
 
         /** Read file from disk and update internal state. */
         const reloadFromDisk = (): string => {
@@ -112,6 +133,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             handler.emit("open", buildOpenPayload())
             this.updateCount(content)
             this.countStatus.show()
+        }).on("getWikilinks", () => {
+            handler.emit("wikilinksUpdated", getWikilinksData());
         }).on("externalUpdate", e => {
             if (lastManualSaveTime && Date.now() - lastManualSaveTime < 800) return;
             const updatedText = e.document.getText()?.replace(/\r/g, '');
@@ -138,23 +161,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                 const wikiTarget = uri.slice(5);
                 const [page, anchor] = wikiTarget.split('#');
                 if (page) {
-                    let targetUri: vscode.Uri | undefined;
-                    // 1. 优先尝试相对于当前文档目录查找
-                    const relName = page.endsWith('.md') ? page : `${page}.md`;
-                    const candidatePath = resolve(folderPath.fsPath, relName);
-                    try {
-                        const candUri = vscode.Uri.file(candidatePath);
-                        await vscode.workspace.fs.stat(candUri);
-                        targetUri = candUri;
-                    } catch {
-                        // 2. 工作区全文按文件名查找 (支持嵌套路径匹配)
-                        const cleanPage = page.endsWith('.md') ? page.slice(0, -3) : page;
-                        const baseName = basename(cleanPage);
-                        const files = await vscode.workspace.findFiles(`**/${baseName}.md`, '**/node_modules/**', 10);
-                        if (files.length > 0) {
-                            targetUri = files.find(f => f.fsPath.replace(/\\/g, '/').endsWith(`${cleanPage}.md`)) || files[0];
-                        }
-                    }
+                    const targetUri = await WikilinkService.getInstance().resolveFile(folderPath.fsPath, page);
 
                     if (targetUri) {
                         const doc = await vscode.workspace.openTextDocument(targetUri);
