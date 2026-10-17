@@ -1807,18 +1807,13 @@
   float: none;
   margin: 0;
 }
-/* 默认：显示属性面板，隐藏 YAML 源码 */
-.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"] > pre,
-.vditor-ir div.vditor-ir__node[data-type="yaml-front-matter"] > pre {
+/* 用户定案：YAML 不做折叠/面板切换。属性面板隐藏，源码（含 --- 围栏）常显、直接编辑 */
+.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"] > .vditor-properties,
+.vditor-ir div.vditor-ir__node[data-type="yaml-front-matter"] > .vditor-properties {
   display: none !important;
 }
-/* 点击展开：隐藏属性面板，显示源码（可编辑） */
-.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"].yaml-collapse--active > .vditor-properties,
-.vditor-ir div.vditor-ir__node[data-type="yaml-front-matter"].yaml-collapse--active > .vditor-properties {
-  display: none;
-}
-.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"].yaml-collapse--active > pre,
-.vditor-ir div.vditor-ir__node[data-type="yaml-front-matter"].yaml-collapse--active > pre {
+.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"] > pre,
+.vditor-ir div.vditor-ir__node[data-type="yaml-front-matter"] > pre {
   display: block !important;
   margin: 0 !important;
   padding: 8px 12px;
@@ -1826,8 +1821,10 @@
   border: 1px solid var(--border-color, #d1d5da);
   border-radius: 8px;
 }
-.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"].yaml-collapse--active > pre::before,
-.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"].yaml-collapse--active > pre::after {
+.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"] > pre::before,
+.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"] > pre::after,
+.vditor-ir div.vditor-ir__node[data-type="yaml-front-matter"] > pre::before,
+.vditor-ir div.vditor-ir__node[data-type="yaml-front-matter"] > pre::after {
   content: "---";
   display: block;
   color: var(--second-color, #8c959f);

@@ -18,30 +18,18 @@ const DOC = '---\ntitle: 花粉数据集\naliases: [PollenDB, 花粉库]\ntags: 
   console.log('editor rendered:', ok);
   await page.waitForTimeout(1500);
 
-  // ===== P1: YAML 属性面板 =====
-  const p1 = await page.evaluate(() => {
+  // ===== P1: YAML 源码常显（折叠机制已移除） =====
+  console.log('P1 raw-source:', JSON.stringify(await page.evaluate(() => {
     const blk = document.querySelector('div[data-type="yaml-front-matter"]');
     const pre = blk && blk.querySelector(':scope > pre');
     const panel = blk && blk.querySelector(':scope > .vditor-properties');
+    const code = blk && blk.querySelector('pre code');
     return {
-      panel: !!panel,
-      keys: panel ? [...panel.querySelectorAll('.vditor-properties__key-label')].map(k => k.textContent) : [],
-      preDisplay: pre ? getComputedStyle(pre).display : null
+      preDisplay: pre ? getComputedStyle(pre).display : null,
+      panelDisplay: panel ? getComputedStyle(panel).display : 'no-panel',
+      src: code ? (code.textContent || '').slice(0, 14) : null,
+      fenceBefore: pre ? getComputedStyle(pre, '::before').content : null
     };
-  });
-  console.log('P1 yaml panel:', JSON.stringify(p1));
-  const kx = await page.evaluate(() => {
-    const k = document.querySelector('.vditor-properties__key-label');
-    if (!k) return null;
-    const r = k.getBoundingClientRect();
-    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
-  });
-  if (kx) await page.mouse.click(kx.x, kx.y);
-  await page.waitForTimeout(250);
-  console.log('P1 expanded:', JSON.stringify(await page.evaluate(() => {
-    const blk = document.querySelector('div[data-type="yaml-front-matter"]');
-    const pre = blk && blk.querySelector(':scope > pre');
-    return { active: !!(blk && blk.classList.contains('yaml-collapse--active')), preDisplay: pre ? getComputedStyle(pre).display : null };
   })));
 
   // ===== P2: 单波浪修正 =====
@@ -188,6 +176,73 @@ const DOC = '---\ntitle: 花粉数据集\naliases: [PollenDB, 花粉库]\ntags: 
   const saved = await page.evaluate(() => String(window.__lastSaved || ''));
   console.log('P8 SAVED-MD soup-free:', saved.indexOf('[[[') < 0);
   console.log('P8 SAVED-MD tail:', JSON.stringify(saved.slice(-70)));
+  // ===== P10: 直接编辑常显 YAML 源码 → 持久不弹回、文件同步、失焦后不变 =====
+  const cpos = await page.evaluate(() => {
+    const blk = document.querySelector('div[data-type="yaml-front-matter"]');
+    const code = blk && blk.querySelector('pre code');
+    if (!code) return null;
+    const r = code.getBoundingClientRect();
+    return { x: r.x + 10, y: r.y + Math.min(8, r.height / 2) };
+  });
+  let editPersists = false;
+  if (cpos) {
+    await page.mouse.click(cpos.x, cpos.y);
+    await page.waitForTimeout(200);
+    await page.keyboard.press('End');
+    await page.waitForTimeout(150);
+    await page.keyboard.type('\nseries: probe');
+    await page.waitForTimeout(600);
+    editPersists = await page.evaluate(() => {
+      const blk = document.querySelector('div[data-type="yaml-front-matter"]');
+      const pre = blk && blk.querySelector(':scope > pre');
+      const code = pre && pre.querySelector('code');
+      return !!(code && (code.textContent || '').includes('series')) && !!pre && getComputedStyle(pre).display !== 'none';
+    });
+  }
+  console.log('P10 direct-edit persists:', editPersists);
+  const farpos = await page.evaluate(() => {
+    const ps = [...document.querySelectorAll('.vditor-wysiwyg .vditor-reset > p')];
+    const r = ps[ps.length - 1].getBoundingClientRect();
+    return { x: r.x + 8, y: r.y + 8 };
+  });
+  await page.mouse.click(farpos.x, farpos.y);
+  await page.waitForTimeout(600);
+  console.log('P10 stays-source-after-blur:', await page.evaluate(() => {
+    const blk = document.querySelector('div[data-type="yaml-front-matter"]');
+    const pre = blk && blk.querySelector(':scope > pre');
+    const code = pre && pre.querySelector('code');
+    return !!(pre && getComputedStyle(pre).display !== 'none' && code && (code.textContent || '').includes('series'));
+  }));
+  const savedY = await page.evaluate(() => String(window.__lastSaved || ''));
+  console.log('P10 saved has new key:', savedY.includes('series'));
+
+  // ===== P9: 节点尾部逐字退格 —— 不跳段、不产生残缺双链 =====
+  await clickPEnd();
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(200);
+  await page.keyboard.type('[[');
+  await page.waitForTimeout(600);
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(500);
+  console.log('P9-ATOM:', await page.evaluate(`(() => { const n=[...document.querySelectorAll('.vditor-wysiwyg [data-type=\"wikilink\"]')].pop(); if(!n) return 'NO-ATOM'; const kids=[...n.children].map(x=>x.className+'::'+JSON.stringify(x.textContent)); return JSON.stringify({outer:n.outerHTML.slice(0,200), kids}); })()`));
+  let jump9 = false, soup9 = false;
+  for (let i = 0; i < 14; i++) {
+    await page.keyboard.press('Backspace');
+    await page.waitForTimeout(110);
+    const st = await page.evaluate(`(() => {
+      const ps=[...document.querySelectorAll('.vditor-wysiwyg .vditor-reset > p')];
+      const last=ps[ps.length-1];
+      const sel=getSelection();
+      const el=sel.anchorNode&&(sel.anchorNode.nodeType===1?sel.anchorNode:sel.anchorNode.parentElement);
+      return { soup: last ? last.textContent.indexOf('[[[')>=0 : false, inLast: !!(el&&last&&(el===last||last.contains(el))) };
+    })()`);
+    console.log('P9 step' + i + ':', await page.evaluate(`(() => { const sel=getSelection(); const c=sel.anchorNode; const el=c&&c.nodeType===1?c:c&&c.parentElement; const n=el&&el.closest?el.closest('[data-type=\"wikilink\"]'):null; const kids=n?[...n.children].map(x=>x.className+'::'+JSON.stringify(x.textContent)):null; return JSON.stringify({caretIn: el? (el.className||el.tagName):null, atom: kids, doc: [...document.querySelectorAll('.vditor-wysiwyg .vditor-reset > p')].pop().textContent.slice(0,40)}); })()`));
+    if (st.soup) soup9 = true;
+    if (!st.inLast) jump9 = true;
+  }
+  const txt9 = await page.evaluate(`(() => { const ps=[...document.querySelectorAll('.vditor-wysiwyg .vditor-reset > p')]; return ps[ps.length-1].textContent; })()`);
+  console.log('P9 char-backspace: no-jump:', !jump9, ' no-soup:', !soup9, ' final:', JSON.stringify(txt9));
+
 
   console.log('---- logs ----');
   logs.slice(0, 30).forEach(l => console.log(l));

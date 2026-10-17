@@ -360,6 +360,14 @@ E2E：P6 字面文本存在 ✓；P8 连续 Backspace 光标零逃逸、闭合�
 
 ---
 
+### 22. YAML 改源码常显（去折叠）+ 双链退格全面接管（v3.7.4-16）
+
+1. **YAML 按用户定案移除折叠/属性面板切换**：状态机（forceExpandYaml/syncYamlCollapse/yaml-collapse--active）整体删除——Vditor 每键重解析所在块会丢失自定义展开类导致"打字弹回+光标丢"，与状态机搏斗不如消灭状态机。CSS 改为源码（含 `---` 围栏伪元素）常显、属性面板隐藏，编辑=原生打字。E2E P1/P10：编辑持久、失焦不变、文件同步 ✓。
+2. **双链 Backspace 同步接管（`wlBackspace` capture keydown）**：逐字删从 ]] 外啃入产生的残缺双链是光标跳段的根因（Lute 每键重解析+wbr 还原对残缺态失效）。方案：一律接管不放行原生，删光标左侧字符并**同步 data-href/title**（关键！stale href 会让 Lute 重解析按旧目标重铸 atom → 括号汤爆炸，实测 step4 转折定位）；内容删空即整节点原子摘除+块级标记延迟 unwrap。E2E P9：`[[全新世温度]]` 14 次连退全程 no-jump/no-soup/final='' ✓。
+3. `openLink(editor)` 传参修复，接管后主动 getValue+保存层归一推 save（preventDefault 吞原生 input）。
+
+---
+
 ## 发布流程
 
 ```bash

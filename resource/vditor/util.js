@@ -494,25 +494,8 @@ export const openLink = (editor) => {
         }
     };
 
-    // YAML frontmatter：光标离开折叠块时自动收起
-    const syncYamlCollapse = () => {
-        const selection = window.getSelection();
-        if (!selection || selection.rangeCount === 0) return;
-        const container = selection.getRangeAt(0).startContainer;
-        const anchorEl = container.nodeType === 1 ? container : container.parentElement;
-        const currentYaml = anchorEl?.closest?.('[data-type="yaml-front-matter"]');
-        document.querySelectorAll('[data-type="yaml-front-matter"].yaml-collapse--active').forEach(node => {
-            if (node === currentYaml) return;
-            // 刚被点击展开的块给 600ms 宽限期，等光标落进源码后再由后续选区变化接管
-            const hold = parseInt(node.dataset?.yamlHold || '0', 10);
-            if (Date.now() - hold < 600) return;
-            node.classList.remove('yaml-collapse--active');
-        });
-    };
-
     document.addEventListener('selectionchange', () => {
         syncWikilinkExpand();
-        syncYamlCollapse();
         syncMathInlineEdit();
     });
 
@@ -546,32 +529,95 @@ export const openLink = (editor) => {
         cur && cur.click(); // 复用 Vditor 绑定的按钮 click → fillEmoji 插入
     }, true);
 
-    // YAML frontmatter 徽章：点击展开源码并定位光标。
-    // 用捕获阶段监听，先于 Vditor 自身的 click 处理执行；展开后打 600ms hold 标记，
-    // 防止光标定位触发的 selectionchange 立即把它折叠回去
-    const forceExpandYaml = (blk) => {
-        blk.classList.add('yaml-collapse--active');
-        blk.dataset.yamlHold = String(Date.now());
-        void blk.offsetWidth; // 强制重排，使 pre 从 display:none 变为可见后再定位光标
-        const code = blk.querySelector('pre code, pre');
-        if (code) {
+    // —— YAML 编辑：不做折叠/面板切换状态机（源码由 CSS 常显，编辑即原生行为）——
+
+    // —— 双链节点 Backspace 确定性接管（同步按键路径，非异步旁路手术）——
+    // 症状：逐字退格啃到 ]] 标记外 → 出现 [[x] 残缺双链 → Vditor 每键全段重解析
+    // 且 wbr 光标还原失效 → 光标跳段首。方案：光标在节点内且左侧尚有正文字符时
+    // 放行原生（删除正文不破坏闭合括号，安全）；其余贴边场景接管——从内容/别名
+    // 尾部逐字缩进，删空即整节点原子摘除（=用户验证无问题的"整节点删除"路径）。
+    // 删除后主动 editor.getValue() 推送保存（preventDefault 会吞掉原生 input 事件）。
+    const WL_SEL = '.vditor-ir__node[data-type=\"wikilink\"], .vditor-ir__node[data-type=\"wikilink-embed\"]';
+    const wlAtomDelete = (node) => {
+        const sel = window.getSelection();
+        const keep = document.createRange();
+        keep.setStartBefore(node);
+        keep.collapse(true);
+        const kill = document.createRange();
+        kill.selectNode(node);
+        kill.deleteContents();
+        if (sel) { sel.removeAllRanges(); sel.addRange(keep); }
+    };
+    const wlBackspace = (e) => {
+        if (e.key !== 'Backspace' || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.isComposing) return;
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return;
+        const range = sel.getRangeAt(0);
+        const el = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
+        let node = el && el.closest ? el.closest(WL_SEL) : null;
+        if (!node && range.startContainer.nodeType === 3 && range.startOffset === 0) {
+            const prev = range.startContainer.previousSibling;
+            if (prev && prev.nodeType === 1 && prev.matches && prev.matches(WL_SEL)) node = prev;
+        }
+        if (!node || node.closest('.vditor-properties')) return;
+        // 一律接管（不放行原生）：原生删到最后一个字符会把内容清空而 data-href 仍是旧目标，
+        // Lute 重解析按 stale href 重铸 atom → 括号汤。删光标左侧字符并同步 href/title。
+        e.preventDefault();
+        e.stopPropagation();
+        const spans = [...node.children].filter(x => !x.classList.contains('vditor-ir__marker'));
+        const target = spans[spans.length - 1];
+        const t = target && target.firstChild;
+        if (t && (t.textContent || '').length > 0) {
+            const txt = t.textContent || '';
+            const at = (t === range.startContainer)
+                ? Math.max(0, Math.min(range.startOffset, txt.length) - 1)
+                : txt.length - 1;
+            t.textContent = txt.slice(0, at) + txt.slice(at + 1);
             const r = document.createRange();
-            r.selectNodeContents(code);
+            r.setStart(t, Math.min(at, t.textContent.length));
             r.collapse(true);
-            const sel = window.getSelection();
             sel.removeAllRanges();
             sel.addRange(r);
+            if (spans.length === 1) {
+                const ph = (t.textContent || '').replace(/​/g, '');
+                node.dataset.href = ph;
+                node.title = ph;
+            }
+        } else {
+            wlAtomDelete(node);
+            const holder = node.closest('[data-block]') || (node.parentElement && node.parentElement.closest('.vditor-reset') ? node.parentElement : null);
+            if (holder) holder.dataset.wlJustAtomDeleted = '1';
         }
+        try {
+            if (editor && typeof editor.getValue === 'function') {
+                handler.emit('save', normalizeWikilinkSoup(editor.getValue()));
+            }
+        } catch { /* ignore */ }
     };
-    ['.vditor-wysiwyg', '.vditor-ir'].forEach(sel => {
-        const host = document.querySelector(sel);
-        if (!host) return;
-        host.addEventListener('click', e => {
-            // 点击属性面板里的别名/标签 chip 时不展开源码（chip 自身可点击跳转）
-            if (e.target.closest?.('.vditor-properties .vditor-wikilink, .vditor-properties .vditor-obsidian-tag')) return;
-            const blk = e.target.closest?.('[data-type="yaml-front-matter"]');
-            if (blk && !blk.classList.contains('yaml-collapse--active')) forceExpandYaml(blk);
-        }, true);
+    ['.vditor-wysiwyg', '.vditor-ir'].forEach(hostSel => {
+        const host = document.querySelector(hostSel);
+        if (host) host.addEventListener('keydown', wlBackspace, true);
+    });
+
+    const wlUnwrapEmpty = () => {
+        document.querySelectorAll('[data-type="wikilink"][data-href=""], [data-type="wikilink-embed"][data-href=""]').forEach(node => {
+            const holder = node.closest('[data-block]');
+            if (!holder || !holder.dataset.wlJustAtomDeleted) return;
+            const selNow = window.getSelection();
+            const f = selNow && selNow.anchorNode;
+            const el = f && (f.nodeType === 1 ? f : f.parentElement);
+            if (el && node.contains(el)) return; // 光标已回 atom 内则不动它
+            const keep = document.createRange();
+            keep.setStartBefore(node);
+            keep.collapse(true);
+            const txt = document.createTextNode(node.textContent || '[[]]');
+            node.replaceWith(txt);
+            if (selNow) { selNow.removeAllRanges(); selNow.addRange(keep); }
+        });
+    };
+    ['.vditor-wysiwyg', '.vditor-ir'].forEach(hostSel => {
+        const host = document.querySelector(hostSel);
+        if (host) host.addEventListener('keyup', wlUnwrapEmpty, true);
     });
     document.addEventListener('click', (e) => {
         const wikilink = e.target.closest?.('[data-type="wikilink"]');

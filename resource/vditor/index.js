@@ -113,7 +113,7 @@ handler.on("open", async (md) => {
       handler.on("update", content => {
         editor.setValue(content);
       })
-      openLink()
+      openLink(editor)
       onToolbarClick(editor)
     }
   })
