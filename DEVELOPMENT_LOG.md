@@ -349,6 +349,17 @@ node scripts/e2e/e2e.cjs
 
 ---
 
+### 21. 采纳"零手术"方案：[[]] 以字面文本呈现、用户直接删除（v3.7.4-15）
+
+响应"是否破坏性"的质疑做的收敛决策：块级光标守卫虽是 fork 本地逻辑（与上游零冲突），但它服务的 `[[]]` unwrap 手术本身已无存在必要——CSS（`[data-href=""] .vditor-ir__marker{display:inline}` + ::before/::after 补显）已让空链接**视觉即字面 `[[]]` 文本**，用户可用 Backspace 像普通字符一样删除；文件层 `normalizeWikilinkSoup` 收敛闭合括号汤。因此：
+- **移除 `[[]]` unwrap DOM 手术**（编辑区结构性手术归零，光标乱跳隐患从根上消失，不再依赖任何守卫时机）；
+- 块级守卫随之撤销，仅保留 `.vditor-cm-host`（永不承载光标的空占位）的节点级守卫即时移除；
+- selectionchange 撤销为 unwrap 加的额外触发；
+- AGENTS.md 第 0 条改写为"编辑区禁结构性手术"红线。
+E2E：P6 字面文本存在 ✓；P8 连续 Backspace 光标零逃逸、闭合汤保存归一 ✓。
+
+---
+
 ## 发布流程
 
 ```bash
