@@ -555,9 +555,23 @@ export const openLink = (editor) => {
         const range = sel.getRangeAt(0);
         const el = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
         let node = el && el.closest ? el.closest(WL_SEL) : null;
-        if (!node && range.startContainer.nodeType === 3 && range.startOffset === 0) {
-            const prev = range.startContainer.previousSibling;
-            if (prev && prev.nodeType === 1 && prev.matches && prev.matches(WL_SEL)) node = prev;
+        if (!node) {
+            // 泛化"光标紧邻 atom 左侧"识别：容器文本起点回溯、元素容器取前一子节点；
+            // 表格单元格内光标与 atom 之间常隔着 ]] marker span（此前漏识别 → 原生
+            // 啃掉一个 ] → 残缺双链 → 列数失衡 → 整表塌成纯文本），marker 经 closest 归位
+            let cand = null;
+            const sc = range.startContainer;
+            const so = range.startOffset;
+            if (sc.nodeType === 3 && so === 0) {
+                let pr = sc.previousSibling;
+                while (pr && pr.nodeType === 3 && !(pr.textContent || '').length) pr = pr.previousSibling;
+                cand = pr;
+            } else if (sc.nodeType === 1 && so > 0) {
+                cand = sc.childNodes[so - 1] || null;
+            }
+            if (cand && cand.nodeType === 1) {
+                node = cand.matches && cand.matches(WL_SEL) ? cand : (cand.closest ? cand.closest(WL_SEL) : null);
+            }
         }
         if (!node || node.closest('.vditor-properties')) return;
         // 一律接管（不放行原生）：原生删到最后一个字符会把内容清空而 data-href 仍是旧目标，

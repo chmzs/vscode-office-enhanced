@@ -3,7 +3,21 @@ const require2 = createRequire('d:/Program Files/nodejs/node_global/node_modules
 const { chromium } = require2('playwright-core');
 const EXEC = process.env.E2E_EDGE || 'c:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 
-const DOC = '---\ntitle: 花粉数据集\naliases: [PollenDB, 花粉库]\ntags: [花粉, 数据集]\n---\n\n数値1~10%很多很多和2~10% 与 ~~双波浪删除线~~ 混排\n\n行内公式 $E=mc^2$ 测试与空链 [[]] 清理\n\n普通段落末尾';
+const DOC = `---
+title: 花粉数据集
+aliases: [PollenDB]
+tags: [花粉]
+---
+
+数値1~10%很多和2~10% 与 ~~双波浪~~ 混排
+
+行内公式 $E=mc^2$ 测试与空链 [[]] 清理
+
+| 方法 | 数据集 | 精度 |
+| --- | --- | --- |
+| 温度序列 | [[全新世温度]] | 0.3℃ |
+
+普通段落末尾`;
 
 (async () => {
   const browser = await chromium.launch({ executablePath: EXEC, headless: true, args: ['--no-sandbox'] });
@@ -72,6 +86,9 @@ const DOC = '---\ntitle: 花粉数据集\naliases: [PollenDB, 花粉库]\ntags: 
   const c1 = await countWL();
   console.log('P3 tab accept:', c1 > c0, c0, '->', c1);
 
+  await page.evaluate(c => window.__openDoc(c), DOC);
+  await page.evaluate(() => window.__waitEditor());
+  await page.waitForTimeout(900);
   // ===== P4: [[page# 章节（mock headings） + [[page| 别名 =====
   await clickPEnd();
   await page.keyboard.press('Enter');
@@ -153,6 +170,9 @@ const DOC = '---\ntitle: 花粉数据集\naliases: [PollenDB, 花粉库]\ntags: 
     return code ? getComputedStyle(code).display : 'no-code';
   }));
 
+  await page.evaluate(c => window.__openDoc(c), DOC);
+  await page.evaluate(() => window.__waitEditor());
+  await page.waitForTimeout(900);
   // ===== P8: 尾部 Backspace 删除 [[x]] —— 无括号汤、光标不离编辑器 =====
   await clickPEnd();
   await page.keyboard.press('Enter');
@@ -215,6 +235,33 @@ const DOC = '---\ntitle: 花粉数据集\naliases: [PollenDB, 花粉库]\ntags: 
   }));
   const savedY = await page.evaluate(() => String(window.__lastSaved || ''));
   console.log('P10 saved has new key:', savedY.includes('series'));
+
+  // ===== P11: 表格单元格内双链逐字退格 —— 表格结构不塌 =====
+  await page.evaluate(c => window.__openDoc(c), DOC);
+  await page.evaluate(() => window.__waitEditor());
+  await page.waitForTimeout(900);
+  const tr0 = await page.evaluate(`(() => { const t = document.querySelector('.vditor-wysiwyg table'); return t ? t.querySelectorAll('tr').length : 0; })()`);
+  const cell = await page.evaluate(() => {
+    const n = document.querySelector('.vditor-wysiwyg table [data-type="wikilink"]');
+    if (!n) return null;
+    const r = n.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  });
+  console.log('P11 atom-in-cell:', !!cell);
+  if (cell) {
+    await page.mouse.click(cell.x, cell.y);
+    await page.waitForTimeout(200);
+    await page.keyboard.press('End');
+    await page.waitForTimeout(150);
+    for (let k = 0; k < 7; k++) { await page.keyboard.press('Backspace'); await page.waitForTimeout(110); }
+  }
+  const p11r = await page.evaluate(`(() => {
+    const t = document.querySelector('.vditor-wysiwyg table');
+    const rows = t ? [...t.querySelectorAll('tr')] : [];
+    const texts = rows.map(r => r.textContent);
+    return { tr: rows.length, cellText: texts.length > 1 ? texts[1] : null };
+  })()`);
+  console.log('P11 table:', JSON.stringify(p11r), ' tr-stable:', p11r.tr === tr0, ' cell-cleared:', !!(p11r.cellText && p11r.cellText.indexOf('全新世温度') < 0), ' raw:', JSON.stringify(p11r.cellText));
 
   // ===== P9: 节点尾部逐字退格 —— 不跳段、不产生残缺双链 =====
   await clickPEnd();
