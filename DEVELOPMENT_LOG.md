@@ -390,6 +390,13 @@ E2E：P6 字面文本存在 ✓；P8 连续 Backspace 光标零逃逸、闭合�
 
 ---
 
+### 25. 远程编辑器回归修复（恢复 -8 误删的 optional 注册）+ 展开态源码着色（v3.7.4-19）
+
+1. **远程（浏览器/code-server 连集群）md 不再用自定义编辑器打开**：用户实测 -5 远程正常、之后失效。定位：v3.7.4-8 把 `cweijan.markdownViewer.optional`（selector `*.md` 全 scheme）当作"重复注册"删除，但主条目 `cweijan.markdownViewer` 的 selector 是 `file:/**/*.md`（仅匹配标准 file scheme）——远程窗口的 md URI 形态不匹配主条目，-5 时代实际生效的正是 optional。恢复双注册（package.json + extension.ts），与 -5 行为对齐。教训：上游的"重复"注册往往是 scheme 兼容层，删除前必须先问"另一条为什么存在"。
+2. **展开态源码颜色**：`--expand .vditor-wikilink__source` 的蓝色规则只有 `.vditor-ir` 作用域（橙色断链规则两种模式都写了），导致"点击展开后正常链黑字、断链有色"的不对称观感。补 `.vditor-wysiwyg` 作用域同款蓝色。
+
+---
+
 ## 发布流程
 
 ```bash

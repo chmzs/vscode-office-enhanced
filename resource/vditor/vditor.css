@@ -1987,6 +1987,12 @@
   color: #0050b3 !important;
 }
 
+/* WYSIWYG 展开态源码同样着色（此前只给了 IR 作用域，导致点击展开后变黑字） */
+.vditor-wysiwyg .vditor-ir__node[data-type="wikilink"].vditor-ir__node--expand .vditor-wikilink__source {
+  display: inline;
+  color: #0050b3 !important;
+}
+
 .vditor-wysiwyg .vditor-ir__node[data-type="wikilink"].vditor-ir__node--expand.vditor-wikilink--unresolved .vditor-wikilink__source,
 .vditor-ir .vditor-ir__node[data-type="wikilink"].vditor-ir__node--expand.vditor-wikilink--unresolved .vditor-wikilink__source {
   color: #D39815 !important;
