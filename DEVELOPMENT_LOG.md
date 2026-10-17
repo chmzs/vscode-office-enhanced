@@ -167,6 +167,53 @@ emoji: {
 
 包体积：8.6MB → 5.25MB
 
+### 10. Obsidian 双链语法与别名显示支持（v3.7.4-1）
+
+**需求**：支持 Obsidian 风格的双向链接语法 `[[笔记名]]` 与别名语法 `[[笔记名|别名显示]]`，且在所有模式（所见即所得 WYSIWYG、即时渲染 IR、预览 Preview）下均能正确解析并点击跳转。
+
+**修改文件**：
+- `resource/vditor/lute.min.js` — 替换为具备 Obsidian AST 支持的 Lute 引擎（支持 `SetObsidian(true)`）
+- `resource/vditor/vditor.js` — 在 Lute 初始化工厂中调用 `t.SetObsidian&&t.SetObsidian(!0)` 全局启用 Obsidian 语法
+- `resource/vditor/index.js` — 在 `after()` 初始化回调中补全启用
+- `resource/vditor/util.js` — 拦截双链点击事件并发送 `wiki:` 前缀 IPC
+- `src/provider/markdownEditorProvider.ts` — 处理 `wiki:` 前缀链接并在 VS Code 中打开实体文件，支持 `#标题` 锚点跳转
+
+### 11. 行内公式重叠修复、双链编辑解耦与链接蓝（v3.7.4-2）
+
+**问题**：
+1. 升级 Lute 后，行内公式的 `<code data-type="math-inline">` 默认不带隐藏属性，导致未激活时灰色的 LaTeX 源码块与 KaTeX 渲染结果并排重复显示。
+2. 双链颜色原为紫色，希望采用与传统超链接一致的经典链接蓝。
+3. 双链点击事件截断过强，在所见即所得模式下无法直接原地光标展开原始语法打字编辑。
+
+**修改文件**：
+- `resource/vditor/vditor.css` — 
+  - 添加 `code[data-type="math-inline"] { display: none; }` 彻底修复行内公式源码与渲染并排重叠的问题
+  - 将双链颜色定义为标准链接蓝（浅色 `#0969da`、深色 `#58a6ff`）
+  - 完善 `.vditor-ir__node--expand` 展开规则：激活时隐藏别名展示并展开原始 `[[目标|别名]]` 供打字修改，失焦时自动收起为别名
+- `resource/vditor/util.js` —
+  - 调整点击事件逻辑：普通单击移入展开原地编辑，仅在 `Ctrl/Cmd + 单击` 或 `双击` 时才触发外跳打开文件
+
+### 12. Obsidian 风格 [[ 输入实时联想与跨库联动（v3.7.4-3）
+
+**需求**：在编辑器中输入 `[[` 时，自动弹出类似 Obsidian 的下拉候选列表；支持按文件名和 frontmatter aliases 智能匹配；支持当前工作区及外部配置的 Obsidian Vault 跨库联动。
+
+**修改文件**：
+- `src/service/markdown/wikilinkService.ts`（新增）—
+  - 双链核心单例服务：通过 `vscode.workspace.findFiles` 快速扫描工作区文件
+  - 解析外部配置项 `vscode-office.obsidianVaultPath`（或自动侦测 `.obsidian` 目录），扫描外部 Vault
+  - 超轻量解析 frontmatter aliases（仅读前 1500 字节，0 内存浪费）
+  - 文件变动监听 (`FileSystemWatcher`)，实时更新内存索引
+- `package.json` — 新增 `vscode-office.obsidianVaultPath` 配置项
+- `resource/vditor/vditor.js` —
+  - 修复 `getKey` 逻辑：解除原有 `:emoji` 必须前面带空格的限制，允许中文字符/标点后直接键入 `[[` 触发联想
+  - 扩展 `fillEmoji`：当 `splitChar === "[["` 时自动将选中的双链转换为正确的 rich DOM 节点插入，保持所见即所得
+  - 扩充候选容量上限至 16 项
+- `resource/vditor/util.js` —
+  - 在 `hotKeys` 中注册 `[[` 规则，支持文件名与 aliases 多维度模糊搜索
+  - 自动识别光标是否处于表格环境：表格内自动将管道符转义为 `[[文件名\|别名]]`，避免破坏 Markdown 表格排版
+- `resource/vditor/index.js` — 在 `open` 及 `wikilinksUpdated` 事件中与前端缓存表保持实时同步
+- `resource/vditor/vditor.css` — 优化 `.vditor-hint` 联想菜单视觉层级、图标展示与最大滚动高度
+
 ---
 
 ## 发布流程
