@@ -26,6 +26,21 @@ This extension is a maintained fork of the original project, with improvements f
   - Mermaid diagrams and document content are left-aligned instead of centered
   - Removed dead code and fixed typos across the codebase
 
+## Obsidian Wikilink Enhancements (this branch)
+
+> This branch builds on [rjwang1982/vscode-office](https://github.com/rjwang1982/vscode-office) (upstream), following its `3.7.4-x` version line. Track upstream with `git fetch upstream && git merge upstream/main`; CI publishes packaged releases to GitHub Releases automatically.
+
+- **Wikilink rendering & inline editing**: `[[note]]` and `[[note|alias]]` work in WYSIWYG, IR and preview modes; single-click a wikilink to expand it into its raw source for typing, auto-collapsed back to the alias on blur
+- **Navigation**: Ctrl+click / double-click opens the target note; `[[note#heading]]` anchors jump to the exact heading
+- **Live `[[` autocomplete**: note names + frontmatter `aliases`; `[[note#` continues with heading completion from the target note; `[[note|` completes display aliases; navigate with ↑ / ↓, accept with Tab / Enter
+- **Unresolved links**: not-yet-created targets render in orange (`#D39815`) vs resolved blue (`#0050b3`); clicking an unresolved link offers one-click note creation in the current folder or the vault
+- **Obsidian vault integration**: set `vscode-office.obsidianVaultPath` to an external vault (auto-detected when the workspace contains `.obsidian`) to complete and navigate across any project; dot-folders (`.obsidian`, `.trash`, `.git`, ...) and heavy build folders are never indexed, matching Obsidian and vault `.gitignore` conventions
+- **Obsidian toolbar button** (purple logo): opens the current note in the Obsidian app via `obsidian://` (vault+file when inside a vault, absolute-path fallback otherwise)
+- **YAML frontmatter**: shown as an Obsidian-style Properties panel by default; click to expand and edit the raw source, auto-collapsed on blur
+- **Inline math**: click a rendered formula to edit its source; continuous typing works without collapsing
+- **Single tilde compliance**: `~text~` no longer renders as strikethrough (only `~~text~~`, per GFM/Obsidian) without touching your source files
+- **Performance**: lazy index scan on first Markdown open, async chunked file reads, debounced watchers — no editor-open or typing latency
+
 ## Introduction
 
 English | [简体中文](README-CN.md)

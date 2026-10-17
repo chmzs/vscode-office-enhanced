@@ -156,7 +156,7 @@ export class WikilinkService {
         // 1. 收集当前工作区所有 Markdown 文件（只收集路径，别名稍后异步批量读）
         const uris = await vscode.workspace.findFiles(
             '**/*.md',
-            '**/{node_modules,.git,dist,out,build,.vscode,.obsidian}/**',
+            '**/{.*,node_modules,dist,out,build,target,__pycache__}/**',
             3000
         );
         for (const uri of uris) {
@@ -219,7 +219,7 @@ export class WikilinkService {
             for (const entry of entries) {
                 const fullPath = join(dir, entry.name);
                 if (entry.isDirectory()) {
-                    if (entry.name === '.obsidian' || entry.name === '.trash' || entry.name === '.git' || entry.name === 'node_modules') {
+                    if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist' || entry.name === 'build' || entry.name === 'out' || entry.name === 'target' || entry.name === '__pycache__' || entry.name === 'venv') {
                         continue;
                     }
                     this.scanExternalVault(fullPath, rootDir, visited, depth + 1, out);
@@ -236,6 +236,8 @@ export class WikilinkService {
 
     private handleFileChange(uri: vscode.Uri) {
         const fsPath = uri.fsPath;
+        // 点号目录（.obsidian/.trash/.git/.smart-env 等）内的 md 不进索引，对齐 Obsidian 与库 .gitignore 忽略惯例
+        if (fsPath.replace(/\\/g, '/').split('/').some(seg => seg.startsWith('.'))) { this.notesMap.delete(fsPath); return; }
         const name = basename(fsPath, '.md');
         const relPath = vscode.workspace.asRelativePath(uri);
         const aliases = extractFrontmatterAliases(fsPath);
@@ -300,7 +302,7 @@ export class WikilinkService {
 
         // 5. 工作区内 findFiles 兜底
         const base = basename(cleanTarget);
-        const files = await vscode.workspace.findFiles(`**/${base}.md`, '**/node_modules/**', 5);
+        const files = await vscode.workspace.findFiles(`**/${base}.md`, '**/{.*,node_modules,dist,out,build,target,__pycache__}/**', 5);
         if (files.length > 0) {
             return files[0];
         }

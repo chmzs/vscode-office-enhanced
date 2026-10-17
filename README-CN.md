@@ -26,6 +26,21 @@
   - Mermaid 图表和文档内容默认左对齐，不再居中
   - 清理了无用代码并修复了多处拼写错误
 
+## Obsidian 双链增强（本分支）
+
+> 本分支基于 [rjwang1982/vscode-office](https://github.com/rjwang1982/vscode-office)（upstream）继续开发，版本号遵循 `3.7.4-x` 上游对齐序列；`git fetch upstream && git merge upstream/main` 可跟进上游更新，CI 自动打包发布于 GitHub Releases。
+
+- **双链渲染与原地编辑**：`[[笔记]]` 与 `[[笔记|别名]]` 在所见即所得 / IR / 预览全模式支持；单击双链展开为原始源码直接打字，光标离开自动收起为别名
+- **双链跳转**：Ctrl+单击 / 双击打开目标笔记；`[[笔记#标题]]` 锚点自动定位到对应标题
+- **`[[` 实时补全**：笔记文件名 + frontmatter `aliases` 别名候选；`[[笔记#` 继续补全目标笔记的章节标题；`[[笔记|` 补全显示别名；↑ / ↓ 选择，Tab / Enter 确认
+- **断链识别**：未创建的目标以橙色（`#D39815`）区分有效链接的蓝色（`#0050b3`）；点击断链可一键在当前目录或知识库中新建该笔记
+- **Obsidian 知识库联动**：配置 `vscode-office.obsidianVaultPath` 指向外部 Vault（或工作区含 `.obsidian` 时自动识别），在任何项目中都能补全 / 跳转库内笔记；`.obsidian`、`.trash`、`.git` 等点号目录与 `node_modules` 等重型目录一律不进入索引（对齐 Obsidian 与 Vault `.gitignore` 惯例）
+- **工具栏 Obsidian 按钮**（紫色 logo）：一键用 Obsidian 应用打开当前笔记（`obsidian://` URI，Vault 内走 `vault+file`，外部走绝对路径兜底）
+- **YAML frontmatter**：默认收成 Obsidian 风格 Properties 属性面板，点击展开编辑原始源码，光标离开自动收起
+- **行内公式**：点击 KaTeX 渲染结果即可编辑源码，连续输入不被打断
+- **单波浪号合规**：`~文字~` 不再显示为删除线（仅 `~~文字~~` 生效，与 GFM/Obsidian 一致），且不影响源码
+- **性能**：笔记索引懒启动 + 异步分批读取 + 文件监听防抖，不阻塞编辑器打开与输入
+
 ## 介绍
 
 [English](README.md) | 简体中文

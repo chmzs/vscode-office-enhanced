@@ -304,6 +304,17 @@ node scripts/e2e/e2e.cjs
 
 ---
 
+### 18. 索引排除对齐 Obsidian 惯例 + README 特性章节（v3.7.4-11）
+
+1. **排除加固**（`wikilinkService.ts`）：此前仅排除 `.obsidian/.git/.vscode/node_modules/dist/out/build`，会漏掉 Vault 内其它点目录（PaperBell 实测存在 `.trash`、`.claude`、`.smart-env` 类、`.ruff_cache`、`.consensus-research`、`.playwright-cli` 等）与 `resolveFile` 兜底 findFiles 只排 `node_modules` 的问题。现统一为：
+   - 工作区扫描与兜底搜索：排除 `**/{.*,node_modules,dist,out,build,target,__pycache__}/**`（一切点号目录）；
+   - 外部 Vault 遍历：跳过 `startsWith('.')` 的全部目录 + node_modules/venv/构建目录；
+   - 文件监听增量：点号目录内新建/修改的 md 不进索引；
+   - 对齐 Obsidian 自身（忽略一切点目录）与 PaperBell `.gitignore` 口径。
+2. **README**：新增《Obsidian 双链增强（本分支）》中英双语章节，收录相对 upstream 的全部特性、`3.7.4-x` 版本约定与 `git merge upstream/main` 跟进流程。
+
+---
+
 ## 发布流程
 
 ```bash
