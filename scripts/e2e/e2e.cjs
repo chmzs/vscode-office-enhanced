@@ -13,6 +13,10 @@ tags: [花粉]
 
 行内公式 $E=mc^2$ 测试与空链 [[]] 清理
 
+## 章节测试
+
+占位段落，用于标题定位探针。
+
 | 方法 | 数据集 | 精度 |
 | --- | --- | --- |
 | 温度序列 | [[全新世温度]] | 0.3℃ |
@@ -318,6 +322,12 @@ tags: [花粉]
     return { unresolved: n.classList.contains('vditor-wikilink--unresolved'), href: n.getAttribute('data-href') };
   });
   console.log('P13 escaped-link:', JSON.stringify(p13), ' not-broken:', !!(p13 && !p13.unresolved));
+
+  // ===== P15: 标题锚点定位（revealHeading） =====
+  await page.evaluate(c => window.__openDoc(c), DOC);
+  await page.evaluate(() => window.__waitEditor());
+  await page.waitForTimeout(900);
+  console.log('P15 reveal:', await page.evaluate(() => JSON.stringify({ hit: window.__revealHeading('章节测试') === true, miss: window.__revealHeading('不存在章节XYZ') === false, hasFn: typeof window.__revealHeading === 'function' })));
 
   // ===== P9: 节点尾部逐字退格 —— 不跳段、不产生残缺双链 =====
   await clickPEnd();

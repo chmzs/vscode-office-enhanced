@@ -1,4 +1,4 @@
-import { openLink, hotKeys, setWikilinksCache, feedHeadings, normalizeWikilinkSoup, initWikilinkObserver, imageParser, getToolbar, autoSymbol, onToolbarClick, createContextMenu, scrollEditor } from "./util.js";
+import { openLink, hotKeys, setWikilinksCache, feedHeadings, normalizeWikilinkSoup, revealHeading, initWikilinkObserver, imageParser, getToolbar, autoSymbol, onToolbarClick, createContextMenu, scrollEditor } from "./util.js";
 
 let state;
 function loadConfigs() {
@@ -15,7 +15,7 @@ function loadConfigs() {
 loadConfigs()
 
 handler.on("open", async (md) => {
-  const { config, language, wikilinks } = md;
+  const { config, language, wikilinks, revealAnchor } = md;
   if (wikilinks) {
     setWikilinksCache(wikilinks);
   }
@@ -24,6 +24,8 @@ handler.on("open", async (md) => {
   });
   // 章节标题按需检索结果的回传入口
   handler.on("headingsResult", (data) => feedHeadings(data));
+  handler.on('revealHeading', (a) => revealHeading(a));
+  window.__revealHeading = revealHeading;
   addAutoTheme(md.rootPath, config.editorTheme)
   handler.on('theme', theme => {
     loadTheme(md.rootPath, theme)
@@ -110,6 +112,10 @@ handler.on("open", async (md) => {
       }
       // 编辑器就绪后拉取最新双链索引（扩展端扫描是异步的，open 事件可能早于扫描完成）
       handler.emit("getWikilinks");
+      if (revealAnchor) {
+        const t = (n) => { if (n <= 0 || !revealHeading(revealAnchor)) { if (n > 0) setTimeout(() => t(n - 1), 400); } };
+        setTimeout(() => t(6), 400);
+      }
       handler.on("update", content => {
         editor.setValue(content);
       })

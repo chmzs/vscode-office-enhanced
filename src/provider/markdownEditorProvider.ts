@@ -21,6 +21,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     private extensionPath: string;
     private countStatus: vscode.StatusBarItem;
     private state: vscode.Memento;
+    private readonly openHandlers = new Map<string, Handler>();
+    private readonly pendingReveal = new Map<string, string>();
     private wikilinkInitialized = false;
 
     /** 懒初始化双链索引：首次打开 md 才扫描，不阻塞激活与编辑器渲染 */
@@ -74,6 +76,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             localResourceRoots: this.getLocalResourceRoots(folderPath)
         }
         const handler = Handler.bind(webviewPanel, uri);
+        this.openHandlers.set(uri.toString(), handler); handler.panel.onDidDispose(() => this.openHandlers.delete(uri.toString()));
         this.handleMarkdown(document, handler, folderPath)
         handler.on('developerTool', () => vscode.commands.executeCommand('workbench.action.toggleDevTools'))
     }
@@ -116,7 +119,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
             scrollTop: this.state.get(`scrollTop_${document.uri.fsPath}`, 0),
             language: vscode.env.language,
             rootPath, content,
-            wikilinks: getWikilinksData()
+            wikilinks: getWikilinksData(),
+            revealAnchor: this.pendingReveal.get(uri.toString()) || ''
         });
 
         // 监听双链笔记库索引更新，实时推送给 WebView
@@ -139,6 +143,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
         handler.on("init", () => {
             handler.emit("open", buildOpenPayload())
+            this.pendingReveal.delete(uri.toString());
             this.updateCount(content)
             this.countStatus.show()
         }).on("getWikilinks", async () => {
@@ -204,21 +209,32 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                     const targetUri = await WikilinkService.getInstance().resolveFile(folderPath.fsPath, page);
 
                     if (targetUri) {
-                        const doc = await vscode.workspace.openTextDocument(targetUri);
-                        const editor = await vscode.window.showTextDocument(doc, { preview: false });
-                        // 如果有锚点，跳转到对应标题
-                        if (anchor) {
-                            const anchorSlug = anchor.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
-                            for (let i = 0; i < doc.lineCount; i++) {
-                                const line = doc.lineAt(i);
-                                const headingMatch = line.text.match(/^#{1,6}\s+(.+)$/);
-                                if (headingMatch) {
-                                    const headingSlug = headingMatch[1].toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
-                                    if (headingSlug === anchorSlug) {
-                                        const range = new vscode.Range(i, 0, i, 0);
-                                        editor.revealRange(range, vscode.TextEditorRevealType.AtTop);
-                                        editor.selection = new vscode.Selection(range.start, range.start);
-                                        break;
+                        // 默认编辑器解析必须走 vscode.open——showTextDocument 按设计恒开内置文本编辑器
+                        // （这正是本地/远程点双链都落到原生编辑器的根因；资源管理器双击走的是默认解析所以正常）
+                        const key = targetUri.toString();
+                        if (anchor) this.pendingReveal.set(key, anchor);
+                        await vscode.commands.executeCommand('vscode.open', targetUri, { preview: false });
+                        const opened = this.openHandlers.get(key);
+                        if (opened && anchor) {
+                            opened.handler.emit('revealHeading', anchor);
+                            this.pendingReveal.delete(key);
+                        } else if (anchor && !opened) {
+                            // 目标被原生文本编辑器接管时兜底：扫描标题行并移动光标
+                            const ed = vscode.window.activeTextEditor;
+                            this.pendingReveal.delete(key);
+                            if (ed && ed.document.uri.toString() === key) {
+                                const tdoc = ed.document;
+                                const anchorSlug = anchor.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+                                for (let i = 0; i < tdoc.lineCount; i++) {
+                                    const headingMatch = tdoc.lineAt(i).text.match(/^#{1,6}\s+(.+)$/);
+                                    if (headingMatch) {
+                                        const headingSlug = headingMatch[1].toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+                                        if (headingSlug === anchorSlug) {
+                                            const range = new vscode.Range(i, 0, i, 0);
+                                            ed.revealRange(range, vscode.TextEditorRevealType.AtTop);
+                                            ed.selection = new vscode.Selection(range.start, range.start);
+                                            break;
+                                        }
                                     }
                                 }
                             }
@@ -249,8 +265,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                             try {
                                 const initialContent = `# ${cleanPage}\n\n`;
                                 await vscode.workspace.fs.writeFile(newFileUri, Buffer.from(initialContent, 'utf8'));
-                                const doc = await vscode.workspace.openTextDocument(newFileUri);
-                                await vscode.window.showTextDocument(doc, { preview: false });
+                                await vscode.commands.executeCommand('vscode.open', newFileUri, { preview: false });
                                 await WikilinkService.getInstance().refresh();
                             } catch (err: any) {
                                 vscode.window.showErrorMessage(`创建笔记失败: ${err?.message || err}`);

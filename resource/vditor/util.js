@@ -47,6 +47,23 @@ export function normalizeWikilinkSoup(md) {
     return String(md == null ? '' : md).replace(WIKI_SOUP_RE, '[[]]');
 }
 
+// 标题锚点定位：在编辑区 DOM 里找匹配标题并滚动到视口中部
+export function revealHeading(anchor) {
+    if (!anchor) return false;
+    const slug = (t) => String(t || '').trim().toLowerCase().split('\u200b').join('').replace(/\s+/g, '-').replace(/[^\w一-鿿-]/g, '');
+    const want = slug(anchor);
+    if (!want) return false;
+    const els = document.querySelectorAll('.vditor-wysiwyg h1, .vditor-wysiwyg h2, .vditor-wysiwyg h3, .vditor-wysiwyg h4, .vditor-wysiwyg h5, .vditor-wysiwyg h6, .vditor-ir h1, .vditor-ir h2, .vditor-ir h3, .vditor-ir h4, .vditor-ir h5, .vditor-ir h6');
+    for (const el of els) {
+        const txt = slug((el.textContent || '').replace(/[\[\]()]/g, ''));
+        if (txt === want || (txt && txt.startsWith(want))) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return true;
+        }
+    }
+    return false;
+}
+
 /** 表格内 \| 转义双链：Lute 会把反斜杠留在 data-href 上，判链/跳转前需还原 */
 export function cleanWikilinkHref(href) {
     const bs = String.fromCharCode(92);

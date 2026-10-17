@@ -414,6 +414,17 @@ E2E：P6 字面文本存在 ✓；P8 连续 Backspace 光标零逃逸、闭合�
 
 ---
 
+### 28. 双链点击落原生编辑器的真根因：showTextDocument 不解析默认编辑器（v3.7.4-22）
+
+**用户纠正后定位**：本地+远程一律原生，而资源管理器双击正常——差异不在 scheme（-21 的解释仅覆盖"打开方式列表缺席"），而在 `vscode.window.showTextDocument()` **按设计只打开内置文本编辑器**，永远不走自定义编辑器默认解析。-2 时代为实现 `[[笔记#标题]]` 锚点跳转（需要 TextEditor 移光标）引入，从此所有双链点击都落到原生。
+**修复**：
+1. 点击跳转与断链引导新建均改 `executeCommand('vscode.open', uri, { preview: false })`（默认编辑器解析）；
+2. 锚点跳转改由 webview 端实现：provider 维护 `openHandlers`/`pendingReveal` 注册表——目标已开则 emit `revealHeading`，新开则经 open payload `revealAnchor` 消费；`util.js revealHeading()` 在编辑区 DOM 中 slug 匹配标题 `scrollIntoView`（index.js after() 带重试）；
+3. 兜底保留：目标确实被原生文本编辑器接管时仍走旧的标题扫描+光标定位。
+**E2E**：新增 P15（hit/miss/hasFn 全真）；全量回归绿。
+
+---
+
 ## 发布流程
 
 ```bash

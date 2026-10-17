@@ -1,7 +1,7 @@
 # 项目交接卡 (Hot SSOT)
 
 ## 1. 停滞断点与当前状态
-- **当前版本**: v3.7.4-21。CI 全绿、Release 资产就位、工作区干净、无未提交改动、无已知未修 bug。
+- **当前版本**: v3.7.4-22。双链点击/断链新建改走 vscode.open（showTextDocument 按设计只开内置文本编辑器，是"点双链落原生"根因）；锚点跳转由 webview revealHeading 实现，P15 守护。
 - **刚闭环（勿回退）**：①双链颜色被主题 `.vditor-content :not(){color!important}`(0,2,1) 级联压制 → 配色规则已提级到 0,3,1/0,4,1 并覆盖全部子 span（-20，P14 计算色探针守护）；②远程浏览器/隧道窗口 md 是 `vscode-vfs:` scheme，主注册 selector 只有 `file:` → 打开方式缺席、双击双链/双击文件都回落原生 → 主注册已扩 `vscode-vfs:` 双形态（-21）。
 - **待用户确认（唯一悬项）**：远程装 -21 后点双链是否进我们的编辑器。若仍是原生：取该 md 的 URI 前缀（命令"文件: 复制 URI"）→ 精准补 scheme；一行兜底：openLink 的 `showTextDocument` 改 `executeCommand('vscode.openWith', uri, 'cweijan.markdownViewer')`。
 - **已知限制（明示过，暂不修）**：整体预览面板里单 `~x~` 仍渲染 `<del>`；harness 跨探针偶发顺序污染（P6 的 soup 字段为残体假阳性）。
