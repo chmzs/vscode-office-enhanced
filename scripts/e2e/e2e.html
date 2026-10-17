@@ -13,6 +13,18 @@
   <script src="/resource/lib/vscode.js"></script>
   <script src="/resource/vditor/vditor.js"></script>
   <script>
+    const __origEmit = handler.emit;
+    handler.emit = function (ev, data) {
+      if (ev === 'getHeadings' && data && data.id) {
+        console.log('MOCK getHeadings ->', data.page, 'id', data.id);
+        setTimeout(() => {
+          console.log('MOCK reply listener:', typeof events['headingsResult']);
+          if (events['headingsResult']) events['headingsResult']({ id: data.id, page: data.page, headings: ['Methods', '2.1 Data', 'Discussion'] });
+        }, 15);
+        return;
+      }
+      return __origEmit.call(handler, ev, data);
+    };
     window.__openDoc = function (content) {
       const payload = {
         title: 'e2e.md',

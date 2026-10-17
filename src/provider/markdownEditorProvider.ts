@@ -1,6 +1,6 @@
 import { adjustImgPath, getWorkspacePath } from '@/common/fileUtil';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
-import { basename, isAbsolute, parse, resolve, join } from 'path';
+import { basename, isAbsolute, parse, relative, resolve, join } from 'path';
 import * as vscode from 'vscode';
 import { Handler } from '../common/handler';
 import { Util } from '../common/util';
@@ -144,6 +144,37 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
         }).on("getWikilinks", async () => {
             await WikilinkService.getInstance().ready;
             handler.emit("wikilinksUpdated", getWikilinksData());
+        }).on("getHeadings", async ({ id, page }: { id: number; page: string }) => {
+            // 按需提取目标笔记的 markdown 标题，供 [[笔记# 章节补全
+            const headings: string[] = [];
+            try {
+                const target = await WikilinkService.getInstance().resolveFile(folderPath.fsPath, page);
+                if (target) {
+                    const doc = await vscode.workspace.openTextDocument(target);
+                    for (let i = 0; i < doc.lineCount; i++) {
+                        const line = doc.lineAt(i).text;
+                        const m = line.match(/^#{1,6}\s+(.+?)\s*#*\s*$/);
+                        if (m) headings.push(m[1].trim());
+                    }
+                }
+            } catch { /* ignore */ }
+            handler.emit("headingsResult", { id, page, headings });
+        }).on("openInObsidian", () => {
+            if (uri.scheme !== 'file') {
+                vscode.window.showWarningMessage('无法跳转 Obsidian：当前文件尚未保存到本地');
+                return;
+            }
+            const fsPath = uri.fsPath;
+            const vaultPath = WikilinkService.getInstance().getVaultPath();
+            let url: string;
+            if (vaultPath && fsPath.replace(/\\/g, '/').toLowerCase()
+                .startsWith(vaultPath.replace(/\\/g, '/').toLowerCase().replace(/[\\/]+$/, '') + '/')) {
+                const rel = relative(vaultPath, fsPath).replace(/\\/g, '/').replace(/\.md$/i, '');
+                url = `obsidian://open?vault=${encodeURIComponent(basename(vaultPath))}&file=${encodeURIComponent(rel)}`;
+            } else {
+                url = `obsidian://open?path=${encodeURIComponent(fsPath)}`;
+            }
+            vscode.env.openExternal(vscode.Uri.parse(url));
         }).on("externalUpdate", e => {
             if (lastManualSaveTime && Date.now() - lastManualSaveTime < 800) return;
             const updatedText = e.document.getText()?.replace(/\r/g, '');

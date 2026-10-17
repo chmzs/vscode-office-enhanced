@@ -1,4 +1,4 @@
-import { openLink, hotKeys, setWikilinksCache, initWikilinkObserver, imageParser, getToolbar, autoSymbol, onToolbarClick, createContextMenu, scrollEditor } from "./util.js";
+import { openLink, hotKeys, setWikilinksCache, feedHeadings, initWikilinkObserver, imageParser, getToolbar, autoSymbol, onToolbarClick, createContextMenu, scrollEditor } from "./util.js";
 
 let state;
 function loadConfigs() {
@@ -22,6 +22,8 @@ handler.on("open", async (md) => {
   handler.on("wikilinksUpdated", (list) => {
     setWikilinksCache(list);
   });
+  // 章节标题按需检索结果的回传入口
+  handler.on("headingsResult", (data) => feedHeadings(data));
   addAutoTheme(md.rootPath, config.editorTheme)
   handler.on('theme', theme => {
     loadTheme(md.rootPath, theme)

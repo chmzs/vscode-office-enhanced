@@ -45,6 +45,7 @@ let syncTimer = null;
 
 export function setWikilinksCache(list) {
     cachedWikilinks = list || [];
+    headingCache.clear();
     validTargetSet = new Set();
     for (const item of cachedWikilinks) {
         if (item.name) {
@@ -70,16 +71,33 @@ export function debouncedSyncWikilinksStatus() {
 }
 
 export function syncWikilinksStatus() {
+    // 光标保护：对光标正停留其中的节点做 remove/replaceWith 会让浏览器丢弃选区并把
+    //  caret 重置到段落开头（编辑时"光标乱跳"的根源）。命中的节点本轮跳过，稍后重试。
+    const sel = window.getSelection();
+    const focus = sel && sel.anchorNode;
+    const cursorInside = (node) => {
+        if (!focus) return false;
+        const el = focus.nodeType === 1 ? focus : focus.parentElement;
+        return !!el && node.contains(el);
+    };
+    let needRetry = false;
+
     // 新版 Lute 在行内公式里渲染 vditor-cm-host 空占位 span，旧版 Vditor 的 ne() 点击
     // 展开逻辑会把"前一个兄弟节点"当源码容器（r.firstChild 为 null 直接抛错，连带
     // 公式编辑与 YAML 展开失效），统一移除以还原 code+preview 结构
-    document.querySelectorAll('.vditor-cm-host').forEach(el => el.remove());
+    document.querySelectorAll('.vditor-cm-host').forEach(el => {
+        if (cursorInside(el)) { needRetry = true; return; }
+        el.remove();
+    });
 
     // 空双链 [[]]：Lute 会解析成 data-href 为空的不可见节点（无法选中删除），
     // 一律还原为普通文本，让用户能正常看到并删除
     document.querySelectorAll('[data-type="wikilink"][data-href=""], [data-type="wikilink-embed"][data-href=""]').forEach(node => {
+        if (cursorInside(node)) { needRetry = true; return; }
         node.replaceWith(document.createTextNode(node.textContent));
     });
+
+    if (needRetry) { setTimeout(() => debouncedSyncWikilinksStatus(), 300); }
 
     const links = document.querySelectorAll('[data-type="wikilink"], .obsidian-wikilink');
     if (!links || links.length === 0) return;
@@ -127,51 +145,143 @@ export const hotKeys = [
     },
     {
         key: '[[',
-        hint: (key) => {
+        hint: async (key) => {
             // 索引未就绪时主动拉取一次（解决插件启动扫描与 open 事件的竞态）
             if (!cachedWikilinks.length) {
                 handler.emit('getWikilinks');
             }
-            const query = (key || '').toLowerCase().trim();
-            const results = [];
+            const raw = key || '';
 
-            // 检测光标是否处于表格单元格内部：表格内转义为 \|，普通文本为 |
+            // 光标是否在表格内（表格内管道符转义为 \|）
             const anchor = window.getSelection()?.anchorNode;
             const anchorEl = anchor?.nodeType === 1 ? anchor : anchor?.parentElement;
             const inTable = !!(anchorEl?.closest?.('table, tr, td, th'));
             const pipe = inTable ? '\\|' : '|';
 
-            for (const item of cachedWikilinks) {
-                const nameLower = item.name.toLowerCase();
-                const nameMatches = !query || nameLower.includes(query);
+            // 解析三种模式：
+            //   [[名称片段            → 文件名/别名候选
+            //   [[名称#片段 / [[名]]#片段 → 目标笔记章节候选
+            //   [[名称|片段 / [[名]]|片段 → 显示文本（别名+章节）候选
+            const m = raw.match(/^([^\[\]\|]*?)\]\]\s*([#\|])([^#\[\]\|]*)$/)
+                || raw.match(/^([^\[\]\|]*?)([#\|])([^#\[\]\|]*)$/);
+            const page = m ? m[1].trim() : raw.trim();
+            const mode = m ? m[2] : '';
+            const frag = (m ? m[3] : '').toLowerCase();
+            const fragRaw = m ? m[3] : '';
+            const ql = page.toLowerCase();
+            const results = [];
+            const push = (value, html) => results.push({ value, html });
 
-                // 1. 笔记文件名匹配
-                if (nameMatches) {
-                    results.push({
-                        value: `[[${item.name}]]`,
-                        html: `<span class="vditor-hint__doc-icon">📄</span> <span class="vditor-hint__title">${item.name}</span>${item.relPath ? `<span class="vditor-hint__sub">${item.relPath}</span>` : ''}`
-                    });
+            // 找到 page 对应的笔记（先精确名，再路径后缀，再大小写）
+            const findNote = (name) => {
+                const n = name.toLowerCase();
+                return cachedWikilinks.find(x => x.name.toLowerCase() === n)
+                    || cachedWikilinks.find(x => (x.relPath || '').toLowerCase().replace(/\\/g, '/').endsWith('/' + n + '.md'))
+                    || cachedWikilinks.find(x => (x.relPath || '').toLowerCase().replace(/\\/g, '/').endsWith(n + '.md'));
+            };
+
+            if (mode === '#' || mode === '|') {
+                const note = findNote(page);
+                const target = note ? note.name : page;
+                if (!target) return [];
+                const headings = await requestHeadings(target);
+                if (mode === '#') {
+                    for (const h of headings) {
+                        if (!frag || h.toLowerCase().includes(frag)) {
+                            push(`[[${target}#${h}]]`,
+                                `<span class="vditor-hint__doc-icon">§</span> <span class="vditor-hint__title">${h}</span><span class="vditor-hint__sub">→ ${target}</span>`);
+                        }
+                        if (results.length >= 16) break;
+                    }
+                    if (!results.length && !headings.length) {
+                        push(`[[${target}]]`, `<span class="vditor-hint__doc-icon">📄</span> <span class="vditor-hint__title">（无章节）${target}</span>`);
+                    }
+                } else {
+                    const aliases = (note && note.aliases) || [];
+                    for (const a of [...aliases, ...headings]) {
+                        if (!frag || a.toLowerCase().includes(frag)) {
+                            push(`[[${target}${pipe}${a}]]`,
+                                `<span class="vditor-hint__doc-icon">🔗</span> <span class="vditor-hint__title">${a}</span><span class="vditor-hint__sub">显示为 · ${target}</span>`);
+                        }
+                        if (results.length >= 16) break;
+                    }
                 }
+                return results;
+            }
 
-                // 2. 别名匹配 (frontmatter aliases)
+            // 默认模式：文件名 + 别名候选
+            for (const item of cachedWikilinks) {
+                const nameMatches = !ql || item.name.toLowerCase().includes(ql);
+                if (nameMatches) {
+                    push(`[[${item.name}]]`,
+                        `<span class="vditor-hint__doc-icon">📄</span> <span class="vditor-hint__title">${item.name}</span>${item.relPath ? `<span class="vditor-hint__sub">${item.relPath}</span>` : ''}`);
+                }
                 if (item.aliases && item.aliases.length > 0) {
                     for (const alias of item.aliases) {
-                        if (!query || alias.toLowerCase().includes(query)) {
-                            results.push({
-                                value: `[[${item.name}${pipe}${alias}]]`,
-                                html: `<span class="vditor-hint__doc-icon">🔗</span> <span class="vditor-hint__title">${alias}</span> <span class="vditor-hint__sub">→ ${item.name}</span>`
-                            });
+                        if (!ql || alias.toLowerCase().includes(ql)) {
+                            push(`[[${item.name}${pipe}${alias}]]`,
+                                `<span class="vditor-hint__doc-icon">🔗</span> <span class="vditor-hint__title">${alias}</span> <span class="vditor-hint__sub">→ ${item.name}</span>`);
                         }
                     }
                 }
-
                 if (results.length >= 16) break;
             }
-
             return results;
         }
     }
 ]
+
+// ===== 章节标题按需检索（扩展端往返 + 缓存） =====
+const headingCache = new Map();
+const pendingHeadings = {};
+let headingReqId = 0;
+
+export function requestHeadings(page) {
+    const k = page.toLowerCase();
+    if (headingCache.has(k)) return Promise.resolve(headingCache.get(k));
+    const id = ++headingReqId;
+    return new Promise(res => {
+        pendingHeadings[id] = res;
+        handler.emit('getHeadings', { id, page });
+        setTimeout(() => {
+            if (pendingHeadings[id]) { delete pendingHeadings[id]; res([]); }
+        }, 1500);
+    });
+}
+
+export function feedHeadings(data) {
+    const resolve = pendingHeadings[data && data.id];
+    if (!resolve) return;
+    delete pendingHeadings[data.id];
+    const headings = (data.headings || []).filter(h => h && !h.includes('#'));
+    headingCache.set(String(data.page || '').toLowerCase(), headings);
+    resolve(headings);
+}
+
+// 块级文本偏移 → (文本节点, 偏移) 映射：供 fillEmoji 在跨 span 的双链节点/续写场景中正确定位删除起点
+window.__wlSetBlockOffset = (range, blockOffset) => {
+    try {
+        let node = range.startContainer;
+        if (node.nodeType === 3) {
+            if (blockOffset <= node.length) { range.setStart(node, blockOffset); return true; }
+        }
+        // 找到块容器
+        let block = node.nodeType === 1 ? node : node.parentElement;
+        while (block && block.nodeType === 1) {
+            if (block.hasAttribute && (block.hasAttribute('data-block') || block.classList.contains('vditor-reset'))) break;
+            block = block.parentElement;
+        }
+        if (!block) return false;
+        let remain = blockOffset;
+        const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, null);
+        for (let tn = walker.nextNode(); tn; tn = walker.nextNode()) {
+            const len = tn.textContent.length;
+            if (remain <= len) { range.setStart(tn, remain); return true; }
+            remain -= len;
+        }
+        return false;
+    } catch (_) { return false; }
+};
 
 function loadRes(url) {
     return fetch(url).then(r => r.text())
@@ -225,6 +335,15 @@ export async function getToolbar(resPath) {
                 handler.emit("export")
             }
         },
+        {
+            tipPosition: 's',
+            tip: 'Open in Obsidian',
+            className: 'right',
+            icon: await loadRes(`${resPath}/icon/obsidian.svg`),
+            click() {
+                handler.emit("openInObsidian")
+            }
+        },
         { name: 'upload', tipPosition: 'e' },
         "|",
         {
@@ -267,7 +386,7 @@ export async function getToolbar(resPath) {
 /**
  * 针对wysiwyg和ir两种模式对超链接做不同的处理
  */
-export const openLink = () => {
+export const openLink = (editor) => {
     const clickCallback = e => {
         let ele = e.target;
         const isSpecial = ['dblclick', 'auxclick'].includes(e.type);
@@ -413,6 +532,19 @@ export const openLink = () => {
         });
     };
 
+    // Tab 确认候选：capture 阶段先于 Vditor 的 tab 插入与 hint.select，直接触发当前高亮项。
+    // （select() 对 Tab 的 preventDefault 不足以阻止 tab:'\t' 功能自身的 insertText）
+    document.addEventListener('keydown', e => {
+        if (e.key !== 'Tab' || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.isComposing) return;
+        const hint = [...document.querySelectorAll('.vditor-hint')]
+            .find(h => !h.closest('.vditor-toolbar') && h.style.display === 'block' && h.querySelector('button'));
+        if (!hint) return; // 无候选弹层时不拦截，保留正常缩进
+        e.preventDefault();
+        e.stopPropagation();
+        const cur = hint.querySelector('.vditor-hint--current') || hint.querySelector('button');
+        cur && cur.click(); // 复用 Vditor 绑定的按钮 click → fillEmoji 插入
+    }, true);
+
     // YAML frontmatter 徽章：点击展开源码并定位光标。
     // 用捕获阶段监听，先于 Vditor 自身的 click 处理执行；展开后打 600ms hold 标记，
     // 防止光标定位触发的 selectionchange 立即把它折叠回去
@@ -430,13 +562,16 @@ export const openLink = () => {
             sel.addRange(r);
         }
     };
-    const wysiwygHost = document.querySelector('.vditor-wysiwyg');
-    if (wysiwygHost) {
-        wysiwygHost.addEventListener('click', e => {
+    ['.vditor-wysiwyg', '.vditor-ir'].forEach(sel => {
+        const host = document.querySelector(sel);
+        if (!host) return;
+        host.addEventListener('click', e => {
+            // 点击属性面板里的别名/标签 chip 时不展开源码（chip 自身可点击跳转）
+            if (e.target.closest?.('.vditor-properties .vditor-wikilink, .vditor-properties .vditor-obsidian-tag')) return;
             const blk = e.target.closest?.('[data-type="yaml-front-matter"]');
             if (blk && !blk.classList.contains('yaml-collapse--active')) forceExpandYaml(blk);
         }, true);
-    }
+    });
     document.addEventListener('click', (e) => {
         const wikilink = e.target.closest?.('[data-type="wikilink"]');
         if (wikilink && !isCompose(e)) {

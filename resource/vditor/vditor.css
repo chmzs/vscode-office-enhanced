@@ -1789,42 +1789,132 @@
   display: none !important;
 }
 
-/* YAML frontmatter 折叠卡片（WYSIWYG）：默认收成徽章，点击展开编辑，光标离开自动收起 */
-.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"] {
-  margin: 6px 0 10px 30px;
-  padding: 0 10px;
-  border: 1px solid var(--border-color, #d1d5da);
-  border-radius: 6px;
-  background: var(--second-bg-color, #f6f8fa);
-  line-height: 26px;
-  cursor: pointer;
+/* ===== YAML Frontmatter：Lute 原生 .vditor-properties 属性面板（Obsidian 风格）===== */
+.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"],
+.vditor-ir div.vditor-ir__node[data-type="yaml-front-matter"] {
+  float: none !important;
+  margin: 8px 0 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  line-height: 1.5;
 }
-.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"]:before {
-  content: "YAML";
+.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"]:before,
+.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"]:after,
+.vditor-ir div.vditor-ir__node[data-type="yaml-front-matter"]:before,
+.vditor-ir div.vditor-ir__node[data-type="yaml-front-matter"]:after {
+  content: none !important;
   float: none;
-  display: inline;
   margin: 0;
-  padding: 0 8px 0 0;
-  font-size: 11px;
-  letter-spacing: 0.5px;
-  color: var(--second-color, #8c959f);
 }
-.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"] > pre {
+/* 默认：显示属性面板，隐藏 YAML 源码 */
+.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"] > pre,
+.vditor-ir div.vditor-ir__node[data-type="yaml-front-matter"] > pre {
+  display: none !important;
+}
+/* 点击展开：隐藏属性面板，显示源码（可编辑） */
+.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"].yaml-collapse--active > .vditor-properties,
+.vditor-ir div.vditor-ir__node[data-type="yaml-front-matter"].yaml-collapse--active > .vditor-properties {
   display: none;
 }
-.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"].yaml-collapse--active {
-  line-height: 1.5;
-  padding: 6px 10px;
+.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"].yaml-collapse--active > pre,
+.vditor-ir div.vditor-ir__node[data-type="yaml-front-matter"].yaml-collapse--active > pre {
+  display: block !important;
+  margin: 0 !important;
+  padding: 8px 12px;
   background: var(--textarea-background-color, #fafbfc);
-  cursor: text;
+  border: 1px solid var(--border-color, #d1d5da);
+  border-radius: 8px;
 }
-.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"].yaml-collapse--active > pre {
+.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"].yaml-collapse--active > pre::before,
+.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"].yaml-collapse--active > pre::after {
+  content: "---";
   display: block;
+  color: var(--second-color, #8c959f);
 }
-.vditor-wysiwyg div.vditor-wysiwyg__block[data-type="yaml-front-matter"].yaml-collapse--active:before {
-  content: "YAML ▾";
-  display: block;
-  padding: 0 0 4px;
+
+/* 属性面板本体 */
+.vditor-properties {
+  border: 1px solid var(--border-color, #d0d7de);
+  border-radius: 8px;
+  background: var(--panel-background-color, #fff);
+  overflow: hidden;
+  user-select: none;
+  font-size: 13px;
+  cursor: pointer;
+}
+.vditor-properties__heading {
+  display: flex;
+  align-items: center;
+  padding: 4px 12px;
+  color: var(--second-color, #6a737d);
+  font-size: 12px;
+  background: var(--second-bg-color, #f6f8fa);
+  border-bottom: 1px solid var(--border-color, #d0d7de);
+}
+.vditor-properties__heading-icon,
+.vditor-properties__key-icon,
+.vditor-properties__edit {
+  display: none;
+}
+.vditor-properties__heading-text::after {
+  content: " · 点击编辑源码";
+  opacity: 0.7;
+}
+.vditor-properties__table {
+  padding: 4px 0;
+}
+.vditor-properties__row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 2px 12px;
+}
+.vditor-properties__row:hover {
+  background: var(--second-bg-color, rgba(128, 128, 128, 0.08));
+}
+.vditor-properties__key {
+  flex: 0 0 110px;
+  color: var(--second-color, #6a737d);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vditor-properties__value {
+  flex: 1 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  color: var(--textarea-text-color, #24292e);
+}
+.vditor-properties__text {
+  word-break: break-word;
+}
+.vditor-obsidian-tag {
+  color: #0050b3;
+  background: rgba(0, 80, 179, 0.08);
+  border-radius: 10px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+.vditor--dark .vditor-obsidian-tag {
+  color: #79c0ff;
+  background: rgba(121, 192, 255, 0.12);
+}
+
+/* 单波浪号合规修正：GFM/Obsidian 规范仅 ~~ 表删除线，~x~ 应视为普通文本。
+   Lute 无独立单波浪开关（SetGFMStrikethrough 会连 ~~/~~ 一起关掉），故对 WYSIWYG
+   做纯视觉修正：取消删除线样式，并显式补回首尾 ~ 标记（不动 DOM，写回零影响；
+   IR 模式 marker 本来就显式渲染，无需处理）。已知限制：整体预览面板的 <del>
+   无标记属性可区分，暂无法修正。 */
+.vditor-wysiwyg s[data-marker="~"] {
+  text-decoration: none;
+}
+.vditor-wysiwyg s[data-marker="~"]::before,
+.vditor-wysiwyg s[data-marker="~"]::after {
+  content: "~";
+  color: var(--second-color, #8c959f);
 }
 
 /* Obsidian Wikilink Styles *//* 有效双链：蓝色 #0050b3，无下划线，无半透明 */

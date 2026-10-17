@@ -292,6 +292,18 @@ node scripts/e2e/e2e.cjs
 
 ---
 
+### 17. 双链补全增强 + YAML 原生属性面板 + 单波浪修正（v3.7.4-10）
+
+1. **补全三模式**（util.js 回调解析 + vditor.js 配套补丁）：`[[名称`（文件名/别名）、`[[名称#片段`（目标笔记章节，经 `getHeadings` IPC 由扩展端实时读标题）、`[[名称|片段`（别名+章节作显示文本），并支持闭合节点续写 `[[名]]#`/`[[名]]|`。配套：render 改块级文本定位（Range.toString）、fillEmoji 经 `window.__wlSetBlockOffset` 做块偏移→(节点,偏移)映射、getKey 放行续写模式；候选扩容 16。
+2. **候选确认键**：↑/↓ 原生支持；**Tab 确认**经 util.js capture 阶段 keydown 拦截（Vditor 的 `tab:'	'` 处理在目标阶段会吞 preventDefault，必须 capture + 直接 click 当前候选按钮）；Enter 原生。
+3. **YAML**：发现新版 Lute **原生输出 `.vditor-properties` 属性面板 + hidden 源码 pre**，弃用自造卡片方案，仅从 4.x 移植/重写面板 CSS：默认显示属性表格（源码 hidden），点击展开 raw 源码编辑、光标离开自动收回；写回经实测零污染（properties 节点被 Lute 识别跳过）。
+4. **单波浪 `~x~` 误删除线**：新 Lute 无 `SetGFMStrikethrough1` 独立开关（只有总开关，关掉会连 `~~` 一起失效）→ 纯 CSS 修正 WYSIWYG：`s[data-marker="~"]` 去删除线并以 ::before/::after 补显 `~` 标记（IR 模式 marker 本就显式，无需处理）。已知限制：整体预览面板 `<del>` 无属性可区分。
+5. **光标乱跳修复**：根因 = `[[]]` 清理/cm-host 移除的 DOM 手术与光标竞态（replaceWith 销毁光标所在节点 → 浏览器重置 caret 到段首）。新增 `cursorInside` 守卫：光标在手术节点内则本轮跳过、300ms 后重试。
+6. **工具栏 Obsidian 按钮**：`icon/obsidian.svg`（simple-icons 官方 logo 路径），点击发 `openInObsidian` → 扩展端拼 `obsidian://open?vault=&file=`（文件在已配置/检测 Vault 内）或 `obsidian://open?path=`（外部路径兜底）。
+7. E2E 补 P1-P7 探针全绿；关键教训：harness 点击段落末尾必须用元素 rect，collapsed Range 的 getBoundingClientRect 是 0 导致"假 bug"两轮。
+
+---
+
 ## 发布流程
 
 ```bash

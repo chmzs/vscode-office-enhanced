@@ -1,112 +1,107 @@
 const { createRequire } = require('module');
 const require2 = createRequire('d:/Program Files/nodejs/node_global/node_modules/@playwright/cli/package.json');
 const { chromium } = require2('playwright-core');
-
 const EXEC = process.env.E2E_EDGE || 'c:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 
-const HINT_PROBE = `(() => {
-  const hs = [...document.querySelectorAll('.vditor-hint')].filter(x => !x.closest('.vditor-toolbar'));
-  const h = hs[0];
-  return h ? { display: getComputedStyle(h).display, buttons: h.querySelectorAll('button').length, sample: (h.textContent || '').slice(0, 100) } : null;
-})()`;
+const DOC = '---\ntitle: 花粉数据集\naliases: [PollenDB, 花粉库]\ntags: [花粉, 数据集]\n---\n\n数値1~10%很多很多和2~10% 与 ~~双波浪删除线~~ 混排\n\n行内公式 $E=mc^2$ 测试与空链 [[]] 清理\n\n普通段落末尾';
 
 (async () => {
   const browser = await chromium.launch({ executablePath: EXEC, headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage();
+  await page.setViewportSize({ width: 1200, height: 900 });
   const logs = [];
-  page.on('console', m => logs.push('[console:' + m.type() + '] ' + m.text()));
-  page.on('requestfailed', r => logs.push('[404?] ' + r.url()));
-  page.on('pageerror', e => {
-    const st = String(e.stack || '').split(String.fromCharCode(10)).slice(1, 3).join(' | ');
-    logs.push('[pageerror] ' + e.message + ' @ ' + st);
-  });
+  page.on('console', m => logs.push('[console:' + m.type() + '] ' + m.text().slice(0, 160)));
+  page.on('pageerror', e => logs.push('[pageerror] ' + e.message.slice(0, 160)));
   await page.goto('http://127.0.0.1:8765/scripts/e2e/e2e.html');
-
-  await page.evaluate(() => window.__openDoc(
-    '---\ntitle: 测试笔记\naliases: [别名一, A1]\ntags: [气候]\n---\n\n行内公式 $E=mc^2$ 测试 [[别名一]] 结束\n\n普通段落'
-  ));
+  await page.evaluate(c => window.__openDoc(c), DOC);
   const ok = await page.evaluate(() => window.__waitEditor());
   console.log('editor rendered:', ok);
-  await page.waitForTimeout(1200);
+  await page.waitForTimeout(1500);
 
-  // ---- Probe 1: YAML 折叠与点击展开 ----
-  const yaml1 = await page.evaluate(() => {
+  // ===== P1: YAML 属性面板 =====
+  const p1 = await page.evaluate(() => {
     const blk = document.querySelector('div[data-type="yaml-front-matter"]');
-    if (!blk) return { found: false };
-    const pre = blk.querySelector(':scope > pre');
+    const pre = blk && blk.querySelector(':scope > pre');
+    const panel = blk && blk.querySelector(':scope > .vditor-properties');
     return {
-      found: true, cls: blk.className,
-      preDisplay: pre ? getComputedStyle(pre).display : 'no-pre',
-      badge: getComputedStyle(blk, '::before').content
+      panel: !!panel,
+      keys: panel ? [...panel.querySelectorAll('.vditor-properties__key-label')].map(k => k.textContent) : [],
+      preDisplay: pre ? getComputedStyle(pre).display : null
     };
   });
-  console.log('YAML collapsed:', JSON.stringify(yaml1));
-
-  await page.evaluate(() => {
-    const blk = document.querySelector('div[data-type="yaml-front-matter"]');
-    if (!blk) return;
-    const r = blk.getBoundingClientRect();
-    blk.__cx = r.x + r.width / 2; blk.__cy = r.y + r.height / 2;
+  console.log('P1 yaml panel:', JSON.stringify(p1));
+  const kx = await page.evaluate(() => {
+    const k = document.querySelector('.vditor-properties__key-label');
+    if (!k) return null;
+    const r = k.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
   });
-  const box = await page.evaluate(() => {
-    const blk = document.querySelector('div[data-type="yaml-front-matter"]');
-    return blk ? { x: blk.__cx, y: blk.__cy } : null;
-  });
-  if (box) await page.mouse.click(box.x, box.y);
-  await page.waitForTimeout(300);
-  const yaml2 = await page.evaluate(() => {
+  if (kx) await page.mouse.click(kx.x, kx.y);
+  await page.waitForTimeout(250);
+  console.log('P1 expanded:', JSON.stringify(await page.evaluate(() => {
     const blk = document.querySelector('div[data-type="yaml-front-matter"]');
     const pre = blk && blk.querySelector(':scope > pre');
     return { active: !!(blk && blk.classList.contains('yaml-collapse--active')), preDisplay: pre ? getComputedStyle(pre).display : null };
-  });
-  console.log('YAML after real click:', JSON.stringify(yaml2));
+  })));
 
-  // ---- Probe 2: [[ hint ----
-  await page.evaluate(() => {
-    const ps = document.querySelectorAll('.vditor-wysiwyg .vditor-reset > p');
-    const last = ps[ps.length - 1];
-    const r = document.createRange();
-    r.selectNodeContents(last);
-    r.collapse(false);
-    const s = getSelection();
-    s.removeAllRanges();
-    s.addRange(r);
-  });
-  await page.keyboard.type('引用 [[');
-  await page.waitForTimeout(500);
-  console.log('HINT after [[ :', JSON.stringify(await page.evaluate(HINT_PROBE)));
-  await page.keyboard.type('全新');
-  await page.waitForTimeout(500);
-  console.log('HINT after [[全新 :', JSON.stringify(await page.evaluate(HINT_PROBE)));
+  // ===== P2: 单波浪修正 =====
+  console.log('P2 strike:', JSON.stringify(await page.evaluate(() => {
+    const single = document.querySelector('.vditor-wysiwyg s[data-marker="~"]');
+    const double = document.querySelector('.vditor-wysiwyg s[data-marker="~~"]');
+    return {
+      single: !!single,
+      singleDeco: single ? getComputedStyle(single).textDecorationLine : null,
+      singleBefore: single ? getComputedStyle(single, '::before').content : null,
+      doubleDeco: double ? getComputedStyle(double).textDecorationLine : null
+    };
+  })));
 
-  // Enter 选中第一项
-  const before = await page.evaluate(() => {
-    const ps = [...document.querySelectorAll('.vditor-wysiwyg .vditor-reset > p')];
-    return ps[ps.length - 1].textContent;
-  });
+  // ===== P3: [[ 补全 + Tab 确认（真实点击保证焦点） =====
+  const clickPEnd = async () => {
+    const pos = await page.evaluate(() => {
+      const ps = [...document.querySelectorAll('.vditor-wysiwyg .vditor-reset > p')];
+      const p = ps[ps.length - 1];
+      const r = p.getBoundingClientRect();
+      return { x: Math.max(r.x + 4, r.right - 4), y: r.y + Math.min(r.height / 2, 10) };
+    });
+    await page.mouse.click(pos.x, pos.y);
+    await page.waitForTimeout(120);
+  };
+  const HINT = `(() => {
+    const hs = [...document.querySelectorAll('.vditor-hint')].filter(x => !x.closest('.vditor-toolbar'));
+    const h = hs[hs.length - 1];
+    return h ? { display: getComputedStyle(h).display, buttons: h.querySelectorAll('button').length, sample: (h.textContent || '').replace(/\\s+/g, ' ').slice(0, 80) } : null;
+  })()`;
+  const countWL = () => page.evaluate(`[...document.querySelectorAll('.vditor-wysiwyg [data-type="wikilink"]')].length`);
+
+  await clickPEnd();
+  const c0 = await countWL();
+  await page.keyboard.type('[[');
+  await page.waitForTimeout(600);
+  console.log('P3 plain hint:', JSON.stringify(await page.evaluate(HINT)));
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(500);
+  const c1 = await countWL();
+  console.log('P3 tab accept:', c1 > c0, c0, '->', c1);
+
+  // ===== P4: [[page# 章节（mock headings） + [[page| 别名 =====
+  await clickPEnd();
+  await page.keyboard.type('[[全新世温度#');
+  await page.waitForTimeout(800);
+  console.log('P4 #mode hint:', JSON.stringify(await page.evaluate(HINT)));
   await page.keyboard.press('Enter');
   await page.waitForTimeout(500);
-  const after = await page.evaluate(() => {
-    const ps = [...document.querySelectorAll('.vditor-wysiwyg .vditor-reset > p')];
-    return ps[ps.length - 1].textContent;
-  });
-  console.log('ENTER result before:', JSON.stringify(before), ' after:', JSON.stringify(after));
+  console.log('P4 #mode inserted:', await page.evaluate(`(() => { const ps=[...document.querySelectorAll('.vditor-wysiwyg .vditor-reset > p')]; return ps[ps.length-1].textContent.includes('#Methods'); })()`));
 
-  // ---- Probe 3: inline math edit ----
-  const mathInfo = await page.evaluate(() => {
-    const el = document.querySelector('.vditor-wysiwyg [data-type="math-inline"]');
-    if (!el) return { found: false };
-    const code = el.querySelector('code');
-    const prev = el.querySelector('.vditor-wysiwyg__preview');
-    return {
-      found: true, cls: el.className,
-      codeDisplay: code ? getComputedStyle(code).display : null,
-      codeInlineStyle: code ? code.style.display : null,
-      hasPreview: !!prev
-    };
-  });
-  console.log('MATH initial:', JSON.stringify(mathInfo));
+  await clickPEnd();
+  await page.keyboard.type('[[花粉数据集|Poll');
+  await page.waitForTimeout(800);
+  console.log('P4 |mode hint:', JSON.stringify(await page.evaluate(HINT)));
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(500);
+  console.log('P4 |mode inserted:', await page.evaluate(`(() => { const ps=[...document.querySelectorAll('.vditor-wysiwyg .vditor-reset > p')]; return ps[ps.length-1].textContent.includes('PollenDB'); })()`));
 
+  // ===== P5: 行内公式编辑 =====
   const mbox = await page.evaluate(() => {
     const prev = document.querySelector('.vditor-wysiwyg [data-type="math-inline"] .vditor-wysiwyg__preview');
     const el = prev || document.querySelector('.vditor-wysiwyg [data-type="math-inline"]');
@@ -115,56 +110,30 @@ const HINT_PROBE = `(() => {
     return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
   });
   if (mbox) await page.mouse.click(mbox.x, mbox.y);
-  await page.waitForTimeout(400);
-  const math2 = await page.evaluate(() => {
-    const el = document.querySelector('.vditor-wysiwyg [data-type="math-inline"]');
-    const code = el && el.querySelector('code');
-    return {
-      codeDisplay: code ? getComputedStyle(code).display : null,
-      codeInlineStyle: code ? code.style.display : null,
-      cls: el ? el.className : null
-    };
-  });
-  console.log('MATH after real click:', JSON.stringify(math2));
-  // 连续输入 'yz'，验证编辑态不被重渲染打断
-  await page.keyboard.type('yz');
-  await page.waitForTimeout(400);
-  const math3 = await page.evaluate(() => {
-    const el = document.querySelector('.vditor-wysiwyg [data-type="math-inline"]');
-    const code = el && el.querySelector('code');
-    return { codeText: code ? code.textContent : null, codeDisplay: code ? getComputedStyle(code).display : null };
-  });
-  console.log('MATH after typing yz:', JSON.stringify(math3));
-  // 点击段落其它位置 → 应收起
-  await page.evaluate(() => {
-    const ps = document.querySelectorAll('.vditor-wysiwyg .vditor-reset > p');
-    const last = ps[ps.length - 1];
-    const r = document.createRange();
-    r.selectNodeContents(last);
-    r.collapse(false);
-    const s = getSelection();
-    s.removeAllRanges();
-    s.addRange(r);
-    s.dispatchEvent && document.dispatchEvent(new Event('selectionchange'));
-  });
   await page.waitForTimeout(300);
-  const math4 = await page.evaluate(() => {
+  const m1 = await page.evaluate(() => {
     const code = document.querySelector('.vditor-wysiwyg [data-type="math-inline"] code');
     return code ? getComputedStyle(code).display : null;
   });
-  console.log('MATH collapsed after leaving:', math4);
-
-  // ---- Probe 4: 空双链 [[]] 清理 ----
-  const empty = await page.evaluate(() => !!document.querySelector('[data-href=""][data-type="wikilink"], [data-href=""][data-type="wikilink-embed"]'));
-  console.log('EMPTY wikilink node remains:', empty);
-
-  // ---- Probe 5: 保存回调拿到的 markdown 是否完好 ----
-  const saved = await page.evaluate(() => {
-    try { return window.__lastSaved || null; } catch { return null; }
+  await page.keyboard.type('yz');
+  await page.waitForTimeout(400);
+  const m2 = await page.evaluate(() => {
+    const el = document.querySelector('.vditor-wysiwyg [data-type="math-inline"]');
+    const code = el && el.querySelector('code');
+    return { display: code ? getComputedStyle(code).display : null, text: code ? code.textContent : null };
   });
-  console.log('saved md:', JSON.stringify(saved));
+  console.log('P5 math click-display:', m1, 'after-type:', JSON.stringify(m2));
 
-  console.log('---- browser logs ----');
-  logs.slice(0, 40).forEach(l => console.log(l));
+  // ===== P6: [[]] 空链清理（光标不在其中时应被清理） =====
+  console.log('P6 empty cleaned:', JSON.stringify(await page.evaluate(() => ({
+    emptyNodes: document.querySelectorAll('[data-type="wikilink"][data-href=""]').length,
+    textKept: [...document.querySelectorAll('.vditor-wysiwyg .vditor-reset > p')].some(p => p.textContent.includes('[[]]'))
+  }))));
+
+  // ===== P7: Obsidian 工具栏按钮 =====
+  console.log('P7 obsidian btn:', await page.evaluate(() => [...document.querySelectorAll('.vditor-toolbar button')].some(b => (b.getAttribute('aria-label') || b.title || '').includes('Obsidian'))));
+
+  console.log('---- logs ----');
+  logs.slice(0, 30).forEach(l => console.log(l));
   await browser.close();
 })().catch(e => { console.error('FATAL', e); process.exit(1); });
