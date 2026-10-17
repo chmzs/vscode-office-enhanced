@@ -40,8 +40,65 @@ const latexSymbols = [
 ];
 
 let cachedWikilinks = [];
+let validTargetSet = new Set();
+let syncTimer = null;
+
 export function setWikilinksCache(list) {
     cachedWikilinks = list || [];
+    validTargetSet = new Set();
+    for (const item of cachedWikilinks) {
+        if (item.name) {
+            validTargetSet.add(item.name.toLowerCase());
+            validTargetSet.add(`${item.name}.md`.toLowerCase());
+        }
+        if (item.relPath) {
+            validTargetSet.add(item.relPath.toLowerCase());
+            validTargetSet.add(item.relPath.replace(/\\/g, '/').toLowerCase());
+        }
+        if (item.aliases && item.aliases.length > 0) {
+            for (const alias of item.aliases) {
+                validTargetSet.add(alias.toLowerCase());
+            }
+        }
+    }
+    debouncedSyncWikilinksStatus();
+}
+
+export function debouncedSyncWikilinksStatus() {
+    if (syncTimer) clearTimeout(syncTimer);
+    syncTimer = setTimeout(syncWikilinksStatus, 100);
+}
+
+export function syncWikilinksStatus() {
+    const links = document.querySelectorAll('[data-type="wikilink"], .obsidian-wikilink');
+    if (!links || links.length === 0) return;
+    links.forEach(link => {
+        const rawHref = link.dataset?.href || '';
+        const page = rawHref.split('#')[0].trim().toLowerCase();
+        if (!page) {
+            // 页内纯锚点链接，不判定为断链
+            link.classList.remove('vditor-wikilink--unresolved');
+            return;
+        }
+        const isResolved = validTargetSet.has(page) || validTargetSet.has(`${page}.md`);
+        if (isResolved) {
+            link.classList.remove('vditor-wikilink--unresolved');
+            link.title = rawHref;
+        } else {
+            link.classList.add('vditor-wikilink--unresolved');
+            link.title = `未创建的笔记: ${rawHref} (点击可新建)`;
+        }
+    });
+}
+
+export function initWikilinkObserver() {
+    const editorEl = document.getElementById('vditor');
+    if (!editorEl) return;
+    const observer = new MutationObserver(() => {
+        debouncedSyncWikilinksStatus();
+    });
+    observer.observe(editorEl, { childList: true, subtree: true });
+    debouncedSyncWikilinksStatus();
 }
 
 export const hotKeys = [

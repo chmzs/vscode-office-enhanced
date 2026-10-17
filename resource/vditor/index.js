@@ -1,4 +1,4 @@
-import { openLink, hotKeys, setWikilinksCache, imageParser, getToolbar, autoSymbol, onToolbarClick, createContextMenu, scrollEditor } from "./util.js";
+import { openLink, hotKeys, setWikilinksCache, initWikilinkObserver, imageParser, getToolbar, autoSymbol, onToolbarClick, createContextMenu, scrollEditor } from "./util.js";
 
 let state;
 function loadConfigs() {
@@ -116,6 +116,7 @@ handler.on("open", async (md) => {
   autoSymbol(handler, editor, config);
   createContextMenu(editor)
   imageParser(config.viewAbsoluteLocal)
+  initWikilinkObserver()
   scrollEditor(md.scrollTop)
   zoomElement('.vditor-content')
 }).emit("init")

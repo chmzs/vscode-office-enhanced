@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { openSync, readSync, closeSync, existsSync, readdirSync, statSync } from 'fs';
-import { basename, extname, join, resolve } from 'path';
+import { openSync, readSync, closeSync, existsSync, readdirSync, statSync, realpathSync } from 'fs';
+import { basename, extname, join, relative, resolve } from 'path';
 
 export interface WikilinkNote {
     name: string;        // 笔记名（无 .md）
@@ -12,14 +12,14 @@ export interface WikilinkNote {
 
 /**
  * 快速解析 Markdown 开头的 frontmatter aliases
- * 仅读取前 1500 字节，避免大文件内存消耗
+ * 仅读取前 1500 字节，并在 finally 中安全释放文件句柄，避免资源泄漏
  */
 export function extractFrontmatterAliases(filePath: string): string[] {
+    let fd: number | undefined;
     try {
-        const fd = openSync(filePath, 'r');
+        fd = openSync(filePath, 'r');
         const buffer = Buffer.alloc(1500);
         const bytesRead = readSync(fd, buffer, 0, 1500, 0);
-        closeSync(fd);
         const text = buffer.toString('utf8', 0, bytesRead);
         const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
         if (!match) return [];
@@ -56,6 +56,10 @@ export function extractFrontmatterAliases(filePath: string): string[] {
         return aliases;
     } catch {
         return [];
+    } finally {
+        if (fd !== undefined) {
+            try { closeSync(fd); } catch { /* ignore */ }
+        }
     }
 }
 
@@ -65,6 +69,9 @@ export class WikilinkService {
     private watchers: vscode.Disposable[] = [];
     private onDidChangeEmitter = new vscode.EventEmitter<WikilinkNote[]>();
     public readonly onDidChange = this.onDidChangeEmitter.event;
+
+    private debounceTimer: NodeJS.Timeout | null = null;
+    private currentVaultPath: string | undefined;
 
     public static getInstance(): WikilinkService {
         if (!WikilinkService.instance) {
@@ -94,6 +101,22 @@ export class WikilinkService {
         if (context) {
             context.subscriptions.push(watcher, configWatcher);
         }
+    }
+
+    /**
+     * 防抖分发更新事件，避免批量文件操作时高频重触发
+     */
+    private triggerDebouncedChange() {
+        if (this.debounceTimer) {
+            clearTimeout(this.debounceTimer);
+        }
+        this.debounceTimer = setTimeout(() => {
+            this.onDidChangeEmitter.fire(this.getNotes());
+        }, 150);
+    }
+
+    public getVaultPath(): string | undefined {
+        return this.currentVaultPath;
     }
 
     public async refresh() {
@@ -135,14 +158,23 @@ export class WikilinkService {
         }
 
         if (vaultPath && existsSync(vaultPath)) {
-            this.scanExternalVault(vaultPath, vaultPath);
+            this.currentVaultPath = vaultPath;
+            const visited = new Set<string>();
+            this.scanExternalVault(vaultPath, vaultPath, visited, 0);
+        } else {
+            this.currentVaultPath = undefined;
         }
 
-        this.onDidChangeEmitter.fire(this.getNotes());
+        this.triggerDebouncedChange();
     }
 
-    private scanExternalVault(dir: string, rootDir: string) {
+    private scanExternalVault(dir: string, rootDir: string, visited: Set<string>, depth: number) {
+        if (depth > 12) return; // 防止过深目录
         try {
+            const realDir = realpathSync(dir);
+            if (visited.has(realDir)) return; // 避免符号链接环路死循环
+            visited.add(realDir);
+
             const entries = readdirSync(dir, { withFileTypes: true });
             for (const entry of entries) {
                 const fullPath = join(dir, entry.name);
@@ -150,7 +182,7 @@ export class WikilinkService {
                     if (entry.name === '.obsidian' || entry.name === '.trash' || entry.name === '.git' || entry.name === 'node_modules') {
                         continue;
                     }
-                    this.scanExternalVault(fullPath, rootDir);
+                    this.scanExternalVault(fullPath, rootDir, visited, depth + 1);
                 } else if (entry.isFile() && extname(entry.name).toLowerCase() === '.md') {
                     if (this.notesMap.has(fullPath)) continue;
                     const name = basename(entry.name, '.md');
@@ -166,7 +198,7 @@ export class WikilinkService {
                 }
             }
         } catch {
-            // 忽略没有权限的目录
+            // 忽略无权限或已失效目录
         }
     }
 
@@ -182,37 +214,39 @@ export class WikilinkService {
             aliases,
             source: 'workspace'
         });
-        this.onDidChangeEmitter.fire(this.getNotes());
+        this.triggerDebouncedChange();
     }
 
     private handleFileDelete(uri: vscode.Uri) {
         this.notesMap.delete(uri.fsPath);
-        this.onDidChangeEmitter.fire(this.getNotes());
+        this.triggerDebouncedChange();
     }
 
     /**
-     * 获取所有可用于补全的笔记列表
+     * 获取所有可用于补全与断链校验的笔记列表
      */
     public getNotes(): WikilinkNote[] {
         return Array.from(this.notesMap.values());
     }
 
     /**
-     * 根据双链 target 查找目标笔记文件 Uri
+     * 根据双链 target 查找目标笔记文件 Uri（支持文件名、路径后缀以及别名匹配）
      */
     public async resolveFile(currentFolder: string, target: string): Promise<vscode.Uri | undefined> {
         const cleanTarget = target.endsWith('.md') ? target.slice(0, -3) : target;
         const targetFileName = `${cleanTarget}.md`;
 
-        // 1. 尝试当前文档目录相对路径
+        // 1. 优先尝试当前文档目录相对路径
         const candPath = resolve(currentFolder, targetFileName);
         if (existsSync(candPath)) {
             return vscode.Uri.file(candPath);
         }
 
-        // 2. 在已缓存的索引表中按文件名匹配
+        const targetLower = cleanTarget.toLowerCase();
+
+        // 2. 在已缓存的索引表中按文件名精确或大小写匹配
         for (const note of this.notesMap.values()) {
-            if (note.name === cleanTarget || note.name.toLowerCase() === cleanTarget.toLowerCase()) {
+            if (note.name === cleanTarget || note.name.toLowerCase() === targetLower) {
                 return vscode.Uri.file(note.fsPath);
             }
         }
@@ -220,12 +254,19 @@ export class WikilinkService {
         // 3. 在已缓存的索引表中按路径后缀匹配 (例如 01_wiki/目标)
         for (const note of this.notesMap.values()) {
             const normPath = note.relPath.replace(/\\/g, '/');
-            if (normPath.endsWith(`${cleanTarget}.md`)) {
+            if (normPath.endsWith(`${cleanTarget}.md`) || normPath.toLowerCase().endsWith(`${targetLower}.md`)) {
                 return vscode.Uri.file(note.fsPath);
             }
         }
 
-        // 4. 工作区内 findFiles 兜底
+        // 4. 按别名匹配 (如果双链只写了别名 [[别名]])
+        for (const note of this.notesMap.values()) {
+            if (note.aliases && note.aliases.some(a => a.toLowerCase() === targetLower)) {
+                return vscode.Uri.file(note.fsPath);
+            }
+        }
+
+        // 5. 工作区内 findFiles 兜底
         const base = basename(cleanTarget);
         const files = await vscode.workspace.findFiles(`**/${base}.md`, '**/node_modules/**', 5);
         if (files.length > 0) {
@@ -236,6 +277,9 @@ export class WikilinkService {
     }
 
     public dispose() {
+        if (this.debounceTimer) {
+            clearTimeout(this.debounceTimer);
+        }
         this.watchers.forEach(w => w.dispose());
         this.notesMap.clear();
     }

@@ -214,6 +214,28 @@ emoji: {
 - `resource/vditor/index.js` — 在 `open` 及 `wikilinksUpdated` 事件中与前端缓存表保持实时同步
 - `resource/vditor/vditor.css` — 优化 `.vditor-hint` 联想菜单视觉层级、图标展示与最大滚动高度
 
+### 13. 断链识别置灰、点击引导新建笔记与代码全面治理（v3.7.4-4）
+
+**需求**：
+1. 识别断链（未创建或不存在的笔记链接），在渲染时与有效链区分（断链呈灰色虚线下划线，悬浮提示并显示警告红）；
+2. 点击断链时提供交互式引导，询问用户在当前目录或外部 Obsidian Vault 中一键新建该笔记；
+3. 对新模块全面做可维护性与性能治理。
+
+**修改文件**：
+- `src/service/markdown/wikilinkService.ts` —
+  - **文件句柄防泄漏**：`extractFrontmatterAliases` 采用 `try...finally` 严格保证 `closeSync(fd)` 释放；
+  - **防死循环与软链环路**：`scanExternalVault` 引入真实路径 Set 判重与递归深度上限（depth $\le$ 12）；
+  - **防抖节流**：文件变动监听引入 150ms 节流，防止 Git 切分支或批量操作引发高频重复扫描；
+  - **多维解析增强**：`resolveFile` 增加对 frontmatter 别名的直接反查；暴露 `getVaultPath` 接口。
+- `src/provider/markdownEditorProvider.ts` —
+  - 监听注销清理：Webview 面板销毁时联动 `wikilinkSub.dispose()`；
+  - 交互式新建笔记：未命中文件时弹窗询问并在指定目录初始化 `# 笔记名`，自动打开并同步索引。
+- `resource/vditor/util.js` —
+  - 维护快速哈希索引 `validTargetSet`，以 $O(1)$ 复杂度判定断链；
+  - 增设 `syncWikilinksStatus` 与防抖监听，实时动态打上 `.vditor-wikilink--unresolved` 状态与提示气泡。
+- `resource/vditor/index.js` — 启动 DOM 变动监听器 `initWikilinkObserver()`。
+- `resource/vditor/vditor.css` — 增加暗色与浅色自适应的 `.vditor-wikilink--unresolved` 灰色虚线和悬停红色报警样式。
+
 ---
 
 ## 发布流程

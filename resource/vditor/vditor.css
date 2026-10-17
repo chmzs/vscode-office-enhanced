@@ -1857,6 +1857,32 @@
   cursor: pointer;
 }
 
+/* 断链 / 未创建笔记样式 (灰色虚线下划线，hover 琥珀红提示) */
+.vditor-wysiwyg .vditor-ir__node[data-type="wikilink"].vditor-wikilink--unresolved,
+.vditor-ir .vditor-ir__node[data-type="wikilink"].vditor-wikilink--unresolved,
+.obsidian-wikilink.vditor-wikilink--unresolved {
+  color: var(--second-color, #8c959f) !important;
+  text-decoration: underline dashed !important;
+  text-underline-offset: 3px;
+  opacity: 0.72;
+  transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+.vditor-wysiwyg .vditor-ir__node[data-type="wikilink"].vditor-wikilink--unresolved:hover,
+.vditor-ir .vditor-ir__node[data-type="wikilink"].vditor-wikilink--unresolved:hover,
+.obsidian-wikilink.vditor-wikilink--unresolved:hover {
+  color: #cf222e !important;
+  opacity: 1;
+  background-color: rgba(207, 34, 46, 0.08);
+}
+
+.vditor--dark .vditor-wysiwyg .vditor-ir__node[data-type="wikilink"].vditor-wikilink--unresolved:hover,
+.vditor--dark .vditor-ir .vditor-ir__node[data-type="wikilink"].vditor-wikilink--unresolved:hover,
+.vditor--dark .obsidian-wikilink.vditor-wikilink--unresolved:hover {
+  color: #ff7b72 !important;
+  background-color: rgba(255, 123, 114, 0.12);
+}
+
 /* Wikilink 自动补全浮层样式 */
 .vditor-hint {
   max-width: 480px !important;

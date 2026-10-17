@@ -1,6 +1,6 @@
 import { adjustImgPath, getWorkspacePath } from '@/common/fileUtil';
-import { readFileSync, writeFileSync } from 'fs';
-import { basename, isAbsolute, parse, resolve } from 'path';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { basename, isAbsolute, parse, resolve, join } from 'path';
 import * as vscode from 'vscode';
 import { Handler } from '../common/handler';
 import { Util } from '../common/util';
@@ -184,7 +184,38 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
                             }
                         }
                     } else {
-                        vscode.window.showWarningMessage(`Wikilink target not found: ${page}`);
+                        // 笔记尚未创建，智能引导新建
+                        const cleanPage = page.endsWith('.md') ? page.slice(0, -3) : page;
+                        const newFileName = `${cleanPage}.md`;
+                        const vaultPath = WikilinkService.getInstance().getVaultPath();
+                        const canCreateInVault = !!(vaultPath && existsSync(vaultPath));
+
+                        const options: string[] = ['在当前目录创建'];
+                        if (canCreateInVault) {
+                            options.push('在 Obsidian 知识库创建');
+                        }
+                        options.push('取消');
+
+                        const choice = await vscode.window.showInformationMessage(
+                            `笔记 "${cleanPage}" 尚未创建，是否立即新建？`,
+                            ...options
+                        );
+
+                        if (choice === '在当前目录创建' || choice === '在 Obsidian 知识库创建') {
+                            const targetDir = choice === '在 Obsidian 知识库创建' && vaultPath ? vaultPath : folderPath.fsPath;
+                            const newFilePath = join(targetDir, newFileName);
+                            const newFileUri = vscode.Uri.file(newFilePath);
+
+                            try {
+                                const initialContent = `# ${cleanPage}\n\n`;
+                                await vscode.workspace.fs.writeFile(newFileUri, Buffer.from(initialContent, 'utf8'));
+                                const doc = await vscode.workspace.openTextDocument(newFileUri);
+                                await vscode.window.showTextDocument(doc, { preview: false });
+                                await WikilinkService.getInstance().refresh();
+                            } catch (err: any) {
+                                vscode.window.showErrorMessage(`创建笔记失败: ${err?.message || err}`);
+                            }
+                        }
                     }
                 }
                 return;
