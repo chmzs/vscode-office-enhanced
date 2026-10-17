@@ -407,6 +407,13 @@ E2E：P6 字面文本存在 ✓；P8 连续 Backspace 光标零逃逸、闭合�
 
 ---
 
+### 27. 主注册补 vscode-vfs 选择器，远程 Web 窗口默认可用（v3.7.4-21）
+
+**用户困惑两连**：①本地把 editorAssociations 设为 cweijan.markdownViewer"没生效"——实为它本就是默认，VS Code 对"关联值=隐式默认"只显示「默认编辑器」；②浏览器远程窗口"打开方式"里没有主注册项——浏览器/隧道会话的 md URI 是 `vscode-vfs://authority/...`，上游 `file:/**` 选择器天然不匹配被过滤。
+**修复**：主注册 selector 增加 `vscode-vfs:/**/*.md(.markdown)` 两种形态（file 限定保留，git:/ 等虚拟文档仍不误劫持）；optional 继续作全 scheme 兜底。若仍有窗口 scheme 不在此列，需用户从远程 md 用命令"文件: 复制 URI"取证 scheme 再定点添加。
+
+---
+
 ## 发布流程
 
 ```bash
