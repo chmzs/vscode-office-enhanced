@@ -25,7 +25,7 @@ handler.on("open", async (md) => {
   // 章节标题按需检索结果的回传入口
   handler.on("headingsResult", (data) => feedHeadings(data));
   handler.on('revealHeading', (a) => revealHeading(a));
-  window.__revealHeading = revealHeading;
+  window.__revealHeading = revealHeading; // E2E 测试钩子（P15 探针）
   addAutoTheme(md.rootPath, config.editorTheme)
   handler.on('theme', theme => {
     loadTheme(md.rootPath, theme)

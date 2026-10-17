@@ -9,7 +9,6 @@ test/
 image/
 promo/
 # 本地调试资产与临时媒体
-test/
 *.gif
 *.jpg
 *.png

@@ -33,3 +33,10 @@ yarn.lock
 vite.config.ts
 shortcut.md
 README-CN.md
+
+# 开发治理：脚本/文档/交接件不进包
+scripts/**
+DEVELOPMENT_LOG.md
+HANDOFF.md
+AGENTS.md
+docs/**
