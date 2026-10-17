@@ -133,6 +133,29 @@ const DOC = '---\ntitle: 花粉数据集\naliases: [PollenDB, 花粉库]\ntags: 
   // ===== P7: Obsidian 工具栏按钮 =====
   console.log('P7 obsidian btn:', await page.evaluate(() => [...document.querySelectorAll('.vditor-toolbar button')].some(b => (b.getAttribute('aria-label') || b.title || '').includes('Obsidian'))));
 
+
+  // ===== P8: 尾部 Backspace 删除 [[x]] —— 无括号汤、光标不离编辑器 =====
+  await clickPEnd();
+  await page.keyboard.type('[[');
+  await page.waitForTimeout(600);
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(600);
+  await clickPEnd();
+  let sawSoup = false, caretLost = false;
+  const SOUP_CHECK = "(() => { const t=[...document.querySelectorAll('.vditor-wysiwyg .vditor-reset > p')].map(p=>p.textContent).join(' '); const sel=getSelection(); const el=sel.anchorNode&&(sel.anchorNode.nodeType===1?sel.anchorNode:sel.anchorNode.parentElement); return { soup: t.indexOf('[[[')>=0, inEditor: !!(el&&el.closest&&el.closest('.vditor-wysiwyg')) }; })()";
+  for (let i = 0; i < 12; i++) {
+    await page.keyboard.press('Backspace');
+    await page.waitForTimeout(80);
+    const r = await page.evaluate(SOUP_CHECK);
+    if (r.soup) sawSoup = true;
+    if (!r.inEditor) caretLost = true;
+  }
+  console.log('P8 backspace: caret-in-editor:', !caretLost);
+  await page.waitForTimeout(600);
+  const saved = await page.evaluate(() => String(window.__lastSaved || ''));
+  console.log('P8 SAVED-MD soup-free:', saved.indexOf('[[[') < 0);
+  console.log('P8 SAVED-MD tail:', JSON.stringify(saved.slice(-70)));
+
   console.log('---- logs ----');
   logs.slice(0, 30).forEach(l => console.log(l));
   await browser.close();

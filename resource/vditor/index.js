@@ -1,4 +1,4 @@
-import { openLink, hotKeys, setWikilinksCache, feedHeadings, initWikilinkObserver, imageParser, getToolbar, autoSymbol, onToolbarClick, createContextMenu, scrollEditor } from "./util.js";
+import { openLink, hotKeys, setWikilinksCache, feedHeadings, normalizeWikilinkSoup, initWikilinkObserver, imageParser, getToolbar, autoSymbol, onToolbarClick, createContextMenu, scrollEditor } from "./util.js";
 
 let state;
 function loadConfigs() {
@@ -68,7 +68,7 @@ handler.on("open", async (md) => {
     toolbar: await getToolbar(md.rootPath),
     extPath: md.rootPath,
     input(content) {
-      handler.emit("save", content)
+      handler.emit("save", normalizeWikilinkSoup(content))
     },
     upload: {
       url: '/image',

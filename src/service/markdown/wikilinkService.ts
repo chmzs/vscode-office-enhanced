@@ -10,6 +10,12 @@ export interface WikilinkNote {
     source: 'workspace' | 'vault';
 }
 
+/** 把 wikiExclude 里的简单目录名合成单个 findFiles 排除模式；含通配/路径的复杂模式交给 JS 过滤 */
+function buildFindExclude(list: string[]): string | null {
+    const simple = list.filter(x => x && x.indexOf('/') < 0 && x.indexOf('*') < 0);
+    return simple.length ? '**/{' + simple.join(',') + '}/**' : null;
+}
+
 interface PendingNote {
     name: string;
     relPath: string;
@@ -155,7 +161,9 @@ export class WikilinkService {
             if (p.endsWith('/**')) p = p.slice(0, -3);
             else if (p.endsWith('/*')) p = p.slice(0, -2);
             if (!p) continue;
-            const re = new RegExp('(^|/)' + p.split('*').join('[^/]*') + '($|/)');
+            const specials = '.+^${}()|[]' + bs;
+            const bodyEsc = p.split('').map(c => (c === '*' || c === '?') ? c : (specials.indexOf(c) >= 0 ? bs + c : c)).join('');
+            const re = new RegExp('(^|/)' + bodyEsc.split('*').join('[^/]*').split('?').join('[^/]') + '($|/)');
             if (re.test(rp)) return true;
         }
         return false;
@@ -174,7 +182,7 @@ export class WikilinkService {
         // 1. 收集当前工作区所有 Markdown 文件（只收集路径，别名稍后异步批量读）
         const uris = await vscode.workspace.findFiles(
             '**/*.md',
-            '**/{node_modules,dist,out,build,target,__pycache__,.git,.vscode,.obsidian,.trash}/**',
+            buildFindExclude(this.customExcludes),
             3000
         );
         for (const uri of uris) {
@@ -239,7 +247,8 @@ export class WikilinkService {
             for (const entry of entries) {
                 const fullPath = join(dir, entry.name);
                 if (entry.isDirectory()) {
-                    if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist' || entry.name === 'build' || entry.name === 'out' || entry.name === 'target' || entry.name === '__pycache__' || entry.name === 'venv') {
+                    const dirRel = join(basename(rootDir), relative(rootDir, fullPath)).split(String.fromCharCode(92)).join('/');
+                    if (this.isCustomExcluded(entry.name) || this.isCustomExcluded(dirRel)) {
                         continue;
                     }
                     this.scanExternalVault(fullPath, rootDir, visited, depth + 1, out);
@@ -258,7 +267,7 @@ export class WikilinkService {
     private handleFileChange(uri: vscode.Uri) {
         const fsPath = uri.fsPath;
         // 点号目录（.obsidian/.trash/.git/.smart-env 等）内的 md 不进索引，对齐 Obsidian 与库 .gitignore 忽略惯例
-        if (fsPath.replace(/\\/g, '/').split('/').some(seg => seg.startsWith('.'))) { this.notesMap.delete(fsPath); return; }
+        if (this.isCustomExcluded(vscode.workspace.asRelativePath(uri))) { this.notesMap.delete(fsPath); return; }
         if (this.isCustomExcluded(vscode.workspace.asRelativePath(uri))) { this.notesMap.delete(fsPath); return; }
         const name = basename(fsPath, '.md');
         const relPath = vscode.workspace.asRelativePath(uri);
@@ -324,7 +333,7 @@ export class WikilinkService {
 
         // 5. 工作区内 findFiles 兜底
         const base = basename(cleanTarget);
-        const files = await vscode.workspace.findFiles(`**/${base}.md`, '**/{node_modules,dist,out,build,target,__pycache__,.git,.vscode,.obsidian,.trash}/**', 5);
+        const files = await vscode.workspace.findFiles(`**/${base}.md`, buildFindExclude(this.customExcludes), 5);
         if (files.length > 0) {
             return files[0];
         }

@@ -39,6 +39,14 @@ const latexSymbols = [
     { name: 'Omega', value: "\\Omega" },
 ];
 
+// 空双链保存层净化：Lute 会把 `[[]]` 解析为空节点且 VditorDOM2Md 往返会膨胀成
+// `[[[[]]]]` 类括号汤（Obsidian 语义：空链即普通文本）。在每次 save 前归一为 `[[]]`。
+const _bs = String.fromCharCode(92);
+const WIKI_SOUP_RE = new RegExp(_bs + '[' + _bs + '[' + '[' + _bs + '[' + _bs + ']' + '|' + _bs + 't' + ' ' + ']' + '*' + _bs + ']' + _bs + ']', 'g');
+export function normalizeWikilinkSoup(md) {
+    return String(md == null ? '' : md).replace(WIKI_SOUP_RE, '[[]]');
+}
+
 let cachedWikilinks = [];
 let validTargetSet = new Set();
 let syncTimer = null;
@@ -75,29 +83,32 @@ export function syncWikilinksStatus() {
     //  caret 重置到段落开头（编辑时"光标乱跳"的根源）。命中的节点本轮跳过，稍后重试。
     const sel = window.getSelection();
     const focus = sel && sel.anchorNode;
-    const cursorInside = (node) => {
+    // 光标守卫（块级）：光标所在块与目标节点有任何包含关系即跳过手术。
+    // Vditor 的 WYSIWYG 每次按键都会重解析整块并用 wbr 还原光标——块内任何
+    // 旁路 DOM 改动（unwrap/remove）都会让浏览器重置选区到段首（"光标乱跳"）。
+    const cursorNear = (node) => {
         if (!focus) return false;
         const el = focus.nodeType === 1 ? focus : focus.parentElement;
-        return !!el && node.contains(el);
+        if (!el) return false;
+        const block = el.closest ? (el.closest('[data-block], .vditor-reset') || el) : el;
+        return node === block || node.contains(block) || block.contains(node);
     };
-    let needRetry = false;
 
     // 新版 Lute 在行内公式里渲染 vditor-cm-host 空占位 span，旧版 Vditor 的 ne() 点击
     // 展开逻辑会把"前一个兄弟节点"当源码容器（r.firstChild 为 null 直接抛错，连带
     // 公式编辑与 YAML 展开失效），统一移除以还原 code+preview 结构
     document.querySelectorAll('.vditor-cm-host').forEach(el => {
-        if (cursorInside(el)) { needRetry = true; return; }
+        if (cursorNear(el)) return;
         el.remove();
     });
 
     // 空双链 [[]]：Lute 会解析成 data-href 为空的不可见节点（无法选中删除），
     // 一律还原为普通文本，让用户能正常看到并删除
     document.querySelectorAll('[data-type="wikilink"][data-href=""], [data-type="wikilink-embed"][data-href=""]').forEach(node => {
-        if (cursorInside(node)) { needRetry = true; return; }
+        if (cursorNear(node)) return;
         node.replaceWith(document.createTextNode(node.textContent));
     });
 
-    if (needRetry) { setTimeout(() => debouncedSyncWikilinksStatus(), 300); }
 
     const links = document.querySelectorAll('[data-type="wikilink"], .obsidian-wikilink');
     if (!links || links.length === 0) return;
@@ -513,6 +524,7 @@ export const openLink = (editor) => {
         syncWikilinkExpand();
         syncYamlCollapse();
         syncMathInlineEdit();
+        debouncedSyncWikilinksStatus();
     });
 
     // 行内公式编辑态：新 Lute 不再给 math-inline 的 code 打 style="display:none"，

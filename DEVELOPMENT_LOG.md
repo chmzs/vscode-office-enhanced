@@ -323,6 +323,18 @@ node scripts/e2e/e2e.cjs
 
 ---
 
+### 20. [[]] Backspace 光标乱跳与括号汤根治（v3.7.4-13）
+
+**现象**：从尾部 Backspace 删除 `[[花粉]]` 时光标跳到句首；空链保存往返膨胀为 `[[[[]]]]`。
+**根因（架构对比）**：Obsidian Live Preview（CodeMirror6）在原文之上画装饰，编辑永远作用于原始文本；Vditor WYSIWYG 是"重写 contenteditable DOM + wbr 还原光标"，任何旁路 DOM 手术（`[[]]` unwrap、cm-host 移除）打在光标所在块都会重置选区。叠加 Lute 自身缺陷：`[[]]`→空节点→`VditorDOM2Md` 输出 `[[[[]]]]`（实测，且循环稳定）。
+**修复三层**：
+1. `resource/vditor/index.js` 保存层 `normalizeWikilinkSoup`：任何只含方括号/竖线/空白的"括号汤"在每次 save 前归一为 `[[]]`，文件稳定收敛（Obsidian 语义一致）；
+2. `resource/vditor/util.js` 光标守卫升级为**块级** `cursorNear`（节点与光标所在块有任何包含关系即跳过手术）；
+3. 移除 300ms 重试定时器（打字中途动 DOM 的元凶），改由 selectionchange 去抖触发——手术只在光标离开块后进行；空节点在清理前由 CSS 显式渲染 `[[ ]]` 标记，视觉即纯文本，无闪变。
+**E2E P8**：连续 12 次 Backspace：光标零逃逸、保存 md 零括号汤 ✓
+
+---
+
 ## 发布流程
 
 ```bash

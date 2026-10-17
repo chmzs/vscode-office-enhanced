@@ -15,6 +15,7 @@
   <script>
     const __origEmit = handler.emit;
     handler.emit = function (ev, data) {
+      if (ev === 'save') { window.__lastSaved = data; }
       if (ev === 'getHeadings' && data && data.id) {
         console.log('MOCK getHeadings ->', data.page, 'id', data.id);
         setTimeout(() => {

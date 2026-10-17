@@ -2,7 +2,7 @@
   "name": "vscode-office-enhanced",
   "displayName": "Office Viewer Enhanced",
   "description": "Preview Word, Excel, PDF, Markdown, and more in VS Code and Kiro. Export self-contained HTML with embedded images and render Mermaid v11 diagrams.",
-  "version": "3.7.4-12",
+  "version": "3.7.4-13",
   "publisher": "rjwang",
   "icon": "images/logo-new.png",
   "engines": {
@@ -473,9 +473,24 @@
         },
         "vscode-office.wikiExclude": {
           "type": "array",
-          "items": { "type": "string" },
-          "default": [],
-          "description": "Extra folders/files (glob patterns, e.g. \"drafts\", \"02_输出/**\", \"*.private.md\") excluded from wikilink indexing and completion. Dot-folders like .obsidian are always excluded."
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            ".obsidian",
+            ".trash",
+            ".git",
+            ".vscode",
+            "node_modules",
+            "dist",
+            "out",
+            "build",
+            "target",
+            "__pycache__",
+            ".venv",
+            "venv"
+          ],
+          "description": "Folders or glob patterns excluded from wikilink indexing & completion, e.g. \"02_输出\", \"drafts/**\", \"*.private.md\". Defaults cover Obsidian/vault housekeeping folders (editable — remove or extend freely)."
         }
       }
     }
