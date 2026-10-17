@@ -1914,12 +1914,16 @@
   color: var(--second-color, #8c959f);
 }
 
-/* Obsidian Wikilink Styles *//* 有效双链：蓝色 #0050b3，无下划线，无半透明 */
-.vditor-wysiwyg [data-type="wikilink"],
-.vditor-wysiwyg [data-type="wikilink"] .vditor-wikilink__display,
-.vditor-ir [data-type="wikilink"],
-.vditor-ir [data-type="wikilink"] .vditor-wikilink__display,
-.obsidian-wikilink {
+/* Obsidian Wikilink Styles：有效=蓝 #0050b3，断链=橙 #D39815，整节点统一。
+   注意：主题层存在 `.vditor-content :not(...){color:var(--front-color)!important}`（特异度 0,2,1）
+   对内容区每个元素直接钉色，双链规则必须用 `.vditor-wysiwyg .vditor-ir__node[data-type=...] span`
+   形态把特异度提到 0,3,1 / 断链 0,4,1 才能压过它（此前容器规则 0,2,0 被压制 → 裸链/断链正文黑色的根因）。 */
+.vditor-wysiwyg .vditor-ir__node[data-type="wikilink"],
+.vditor-ir .vditor-ir__node[data-type="wikilink"],
+.vditor-wysiwyg .vditor-ir__node[data-type="wikilink"] span,
+.vditor-ir .vditor-ir__node[data-type="wikilink"] span,
+.vditor-wysiwyg [data-type="wikilink"].obsidian-wikilink,
+a.obsidian-wikilink {
   color: #0050b3 !important;
   text-decoration: none !important;
   cursor: pointer;
@@ -1927,12 +1931,12 @@
   font-weight: 500;
 }
 
-/* 断链（未创建笔记）：橙色 #D39815，无下划线，无半透明 */
-.vditor-wysiwyg [data-type="wikilink"].vditor-wikilink--unresolved,
-.vditor-wysiwyg [data-type="wikilink"].vditor-wikilink--unresolved .vditor-wikilink__display,
-.vditor-ir [data-type="wikilink"].vditor-wikilink--unresolved,
-.vditor-ir [data-type="wikilink"].vditor-wikilink--unresolved .vditor-wikilink__display,
-.obsidian-wikilink.vditor-wikilink--unresolved {
+.vditor-wysiwyg .vditor-ir__node[data-type="wikilink"].vditor-wikilink--unresolved,
+.vditor-ir .vditor-ir__node[data-type="wikilink"].vditor-wikilink--unresolved,
+.vditor-wysiwyg .vditor-ir__node[data-type="wikilink"].vditor-wikilink--unresolved span,
+.vditor-ir .vditor-ir__node[data-type="wikilink"].vditor-wikilink--unresolved span,
+.vditor-wysiwyg [data-type="wikilink"].obsidian-wikilink.vditor-wikilink--unresolved,
+a.obsidian-wikilink.vditor-wikilink--unresolved {
   color: #D39815 !important;
   text-decoration: none !important;
   cursor: pointer;

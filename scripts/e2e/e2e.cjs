@@ -18,7 +18,7 @@ tags: [花粉]
 | 温度序列 | [[全新世温度]] | 0.3℃ |
 | 引用 | [[花粉数据集\\|PollenDB]] | 2.1℃ |
 
-普通段落末尾`;
+色测：[[全新世温度]] [[花粉数据集|PollenDB]] [[幽灵笔记|Ghost, Note]] [[不存在笔记]] 完`;
 
 (async () => {
   const browser = await chromium.launch({ executablePath: EXEC, headless: true, args: ['--no-sandbox'] });
@@ -197,6 +197,35 @@ tags: [花粉]
   const saved = await page.evaluate(() => String(window.__lastSaved || ''));
   console.log('P8 SAVED-MD soup-free:', saved.indexOf('[[[') < 0);
   console.log('P8 SAVED-MD tail:', JSON.stringify(saved.slice(-70)));
+  // ===== P14: 双链四形态 × 折叠/展开 计算颜色 =====
+  await page.evaluate(c => window.__openDoc(c), DOC);
+  await page.evaluate(() => window.__waitEditor());
+  await page.waitForTimeout(900);
+  const COL = `(() => {
+    const want = (el) => el ? getComputedStyle(el).color : 'MISSING';
+    const pick = (txt) => [...document.querySelectorAll('.vditor-wysiwyg [data-type="wikilink"]')].find(x => (x.getAttribute('data-href')||'').includes(txt));
+    const out = {};
+    for (const key of ['resolved-bare','resolved-alias','broken-alias','broken-bare']) {
+      const href = {'resolved-bare':'全新世温度','resolved-alias':'花粉数据集','broken-alias':'幽灵笔记','broken-bare':'不存在笔记'}[key];
+      const n = pick(href);
+      if (!n) { out[key] = 'NO-NODE'; continue; }
+      const spans = [...n.children].filter(x => x.className.indexOf('marker') < 0);
+      const target = spans[spans.length - 1];
+      out[key] = { unresolved: n.classList.contains('vditor-wikilink--unresolved'), color: want(target) };
+    }
+    return JSON.stringify(out);
+  })()`;
+  console.log('P14 collapsed:', await page.evaluate(COL));
+  // 点击 resolved-alias 展开后再测
+  const ap = await page.evaluate(() => {
+    const n = [...document.querySelectorAll('.vditor-wysiwyg [data-type="wikilink"]')].find(x => (x.getAttribute('data-href')||'').includes('花粉数据集'));
+    if (!n) return null;
+    const r = n.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  });
+  if (ap) { await page.mouse.click(ap.x, ap.y); await page.waitForTimeout(350); }
+  console.log('P14 after-click:', await page.evaluate(COL));
+
   // ===== P10: 直接编辑常显 YAML 源码 → 持久不弹回、文件同步、失焦后不变 =====
   const cpos = await page.evaluate(() => {
     const blk = document.querySelector('div[data-type="yaml-front-matter"]');

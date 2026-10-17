@@ -397,6 +397,16 @@ E2E：P6 字面文本存在 ✓；P8 连续 Backspace 光标零逃逸、闭合�
 
 ---
 
+### 26. 双链颜色被主题级联压制的根因修复（v3.7.4-20）
+
+**症状**：编辑模式下裸双链与断链正文都是黑色（仅别名 display 显蓝），用户判断"同为双链必须统一上色"正确。
+**根因（styleSheets 规则级实测）**：Vditor 主题 css 有 `.vditor-content :not(.hljs, .hljs *, .katex, …){color: var(--front-color)!important}` 对内容区**每个元素**直接钉色，特异度 0,2,1；原容器规则 `.vditor-wysiwyg [data-type="wikilink"]` 仅 0,2,0 被压制，`__display` 子规则 0,3,0 侥幸幸存——这就是"别名有色、正文/断链无色"的不对称真相。断链容器虽 0,3,0 赢了父级，但正文子 span 再次被主题直接命中 → 黑色。
+**修复**：颜色规则全部提级为 `.vditor-{wysiwyg,ir} .vditor-ir__node[data-type="wikilink"][span]`（0,3,1）与 `.….vditor-wikilink--unresolved[span]`（0,4,1），覆盖容器+全部子 span（marker/display/source/content），一次性统一；预览 a.obsidian-wikilink 同步。
+**验证**：新增 E2E P14 计算色探针（4 形态 × 折叠/展开 8 项）：全部 rgb(0,80,179)/rgb(211,152,21) ✓；全量回归 16 项无异常。
+**教训**：对抗性全局 !important 存在时，"看起来没生效"的样式先 dump getMatchedCSS 级规则链再调选择器，别猜。
+
+---
+
 ## 发布流程
 
 ```bash
